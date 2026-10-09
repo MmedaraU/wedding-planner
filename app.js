@@ -169,15 +169,22 @@ const VIEWS = {
 };
 
 async function render() {
+  // Overview is a virtual route — handle it before looking up a schema
+  if (state.route === '_overview') {
+    return renderOverview();
+  }
+
   const schema = currentSchema();
   if (!schema) {
     document.getElementById('view').innerHTML = '<h1>Sheet not found</h1>';
     return;
   }
+
   if (schema.type === 'link') {
     renderLinkView(schema);
     return;
   }
+
   const viewFn = VIEWS[schema.sheet] || VIEWS._default;
   await viewFn(schema);
 }
