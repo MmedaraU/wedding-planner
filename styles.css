@@ -1844,3 +1844,211 @@ td.empty {
   }
   .chip { flex-shrink: 0; }
 }
+
+/* ============================================================
+   TIMELINE — next-up hero, date badges, bucket headers
+   ============================================================ */
+
+/* ---------- "Next up" hero ---------- */
+
+.nextup {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.nextup-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  -webkit-border-radius: var(--radius);
+  -moz-border-radius: var(--radius);
+  -ms-border-radius: var(--radius);
+  -o-border-radius: var(--radius);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  -webkit-transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+  -moz-transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+  -ms-transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+  -o-transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+}
+.nextup-card:hover {
+  border-color: var(--accent);
+  -webkit-transform: translateY(-1px);
+  -moz-transform: translateY(-1px);
+  -ms-transform: translateY(-1px);
+  -o-transform: translateY(-1px);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.nextup-card.overdue {
+  border-left: 3px solid var(--danger);
+  padding-left: 13px;
+}
+
+.nextup-when {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+.nextup-card.overdue .nextup-when {
+  color: var(--danger);
+}
+
+.nextup-name {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.35;
+  margin-bottom: 4px;
+}
+
+.nextup-date {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* ---------- Bucket section ---------- */
+
+.tl-bucket {
+  margin-bottom: 24px;
+}
+
+.tl-bucket-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 0 4px;
+}
+
+.tl-bucket-name {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.tl-bucket-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  padding: 2px 8px;
+  -webkit-border-radius: 999px;
+  -moz-border-radius: 999px;
+  -ms-border-radius: 999px;
+  -o-border-radius: 999px;
+  border-radius: 999px;
+  min-width: 24px;
+  text-align: center;
+}
+
+/* Overdue bucket gets a soft red tint */
+.tl-bucket:has(.tl-row .tl-date.overdue) .tl-bucket-name {
+  color: var(--danger);
+}
+
+/* ---------- Timeline row with date badge ---------- */
+
+.tl-row .ql-row-main {
+  padding: 10px 14px 10px 10px;
+  gap: 12px;
+}
+
+.tl-date {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  padding: 6px 8px;
+  -webkit-border-radius: var(--radius-sm);
+  -moz-border-radius: var(--radius-sm);
+  -ms-border-radius: var(--radius-sm);
+  -o-border-radius: var(--radius-sm);
+  border-radius: var(--radius-sm);
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.tl-date-empty {
+  background: transparent;
+  border: 1px dashed var(--border);
+  min-height: 42px;
+}
+
+.tl-date-month {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+}
+.tl-date-day {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 1px 0;
+}
+.tl-date-weekday {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Overdue date badge */
+.tl-date.overdue {
+  background: var(--danger-soft);
+  border-color: transparent;
+}
+.tl-date.overdue .tl-date-month { color: var(--danger-text); }
+.tl-date.overdue .tl-date-day   { color: var(--danger-text); }
+.tl-date.overdue .tl-date-weekday { color: var(--danger-text); opacity: 0.75; }
+
+/* Done rows: dim the date badge */
+.tl-row.done .tl-date {
+  opacity: 0.55;
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width: 720px) {
+  .nextup {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .nextup-card {
+    padding: 12px 14px;
+  }
+
+  .tl-row .ql-row-main {
+    padding: 10px;
+    gap: 8px;
+  }
+
+  .tl-date {
+    min-width: 42px;
+    padding: 5px 6px;
+  }
+  .tl-date-day { font-size: 16px; }
+  .tl-date-month,
+  .tl-date-weekday { font-size: 9px; }
+
+  .tl-bucket-header {
+    padding: 0 2px;
+  }
+}

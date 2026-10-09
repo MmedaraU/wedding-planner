@@ -497,36 +497,335 @@ async function renderTimeline(schema) {
   }
 }
 
-function renderTimelineRow(row, schema, roles) {
+// ============================================================
+// VIEW: TIMELINE
+// ============================================================
+
+async function renderTimeline(schema) {
+  setStatus('Loading timeline…');
+  try {
+    const res = await apiGetRows(schema.sheet);
+    if (res.error) throw new Error(res.error);
+    const rows = res.rows || [];
+    state.data[schema.sheet] = rows;
+
+    if (rows.length > 0 && !schema.columns) {
+      schema.columns = Object.keys(rows[0]).filter(k => k !== '_row');
+    }
+    const cols = schema.columns || [];
+    const roles = detectFieldRoles(schema);
+    Object.assign(schema, roles);
+
+    const doneCol = roles.checkField;
+    const dateCol = roles.dateField;
+    const nameCol = roles.nameField;
+    const phaseCol = cols.find(c => /phase|section|stage|month|when/i.test(c)) || '';
+
+    // Does this sheet have usable dates?
+    const hasDates = !!dateCol && rows.some(r => r[dateCol]);
+
+    // --- Stats ---
+    const total = rows.length;
+    const doneCount = doneCol ? rows.filter(r => isChecked(r[doneCol])).length : 0;
+    const overdue = hasDates
+      ? rows.filter(r => !isChecked(r[doneCol]) && (daysUntil(r[dateCol]) ?? 1) < 0).length
+      : 0;
+    const pct = total ? (doneCount / total) * 100 : 0;
+
+    // --- "Next up": three closest upcoming incomplete tasks ---
+    const nextUp = hasDates
+      ? rows
+        .filter(r => !isChecked(r[doneCol]) && r[dateCol])
+        .sort((a, b) => {
+          const da = parseSheetDate(a[dateCol])?.getTime() ?? Infinity;
+          const db = parseSheetDate(b[dateCol])?.getTime() ?? Infinity;
+          return da - db;
+        })
+        .slice(0, 3)
+      : [];
+
+    // --- Buckets ---
+    const buckets = hasDates
+      ? bucketByDate(rows, doneCol, dateCol)
+      : bucketByPhase(rows, doneCol, phaseCol);
+
+    // --- Filter + search ---
+    const filter = state.filter[schema.sheet] || 'all';
+    const searchQ = (state.search[schema.sheet] || '').toLowerCase();
+
+    const matchFilter = r => {
+      if (filter === 'overdue' && (!hasDates || isChecked(r[doneCol]) || (daysUntil(r[dateCol]) ?? 1) >= 0)) return false;
+      if (filter === 'open' && isChecked(r[doneCol])) return false;
+      if (filter === 'done' && !isChecked(r[doneCol])) return false;
+      if (searchQ) {
+        const hay = cols.map(c => String(r[c] ?? '')).join(' ').toLowerCase();
+        if (!hay.includes(searchQ)) return false;
+      }
+      return true;
+    };
+
+    const visibleBuckets = buckets
+      .map(b => ({ ...b, tasks: b.tasks.filter(matchFilter) }))
+      .filter(b => b.tasks.length > 0);
+
+    // --- Render ---
+    $('#view').innerHTML = `
+      <div class="toolbar">
+        <h1>${escapeHtml(schema.label)}</h1>
+        <button class="btn btn-primary" id="tl-add">+ Add task</button>
+      </div>
+
+      ${renderStats([
+      { label: 'Total', value: total },
+      { label: 'Done', value: doneCount },
+      { label: 'Open', value: total - doneCount },
+      ...(hasDates ? [{
+        label: 'Overdue', value: overdue,
+        hint: overdue > 0 ? 'needs attention' : ''
+      }] : [])
+    ])}
+
+      ${renderProgress(pct, 'Overall progress')}
+
+      ${nextUp.length ? `
+        <h2>Next up</h2>
+        <div class="nextup">
+          ${nextUp.map(r => renderNextUpCard(r, schema, doneCol, dateCol, nameCol)).join('')}
+        </div>
+      ` : ''}
+
+      <h2>All tasks</h2>
+
+      <div class="ql-controls">
+        <input type="search" id="tl-search" placeholder="Search tasks…"
+               value="${escapeHtml(state.search[schema.sheet] || '')}">
+      </div>
+
+      <div class="chips">
+        ${[
+        { key: 'all', label: 'All' },
+        { key: 'open', label: 'Open' },
+        ...(hasDates ? [{ key: 'overdue', label: 'Overdue' }] : []),
+        { key: 'done', label: 'Done' }
+      ].map(c => `
+          <button class="chip ${filter === c.key ? 'on' : ''}" data-filter="${c.key}">
+            ${escapeHtml(c.label)}
+          </button>
+        `).join('')}
+      </div>
+
+      <div id="tl-add-strip"></div>
+
+      ${visibleBuckets.length === 0
+        ? `<div class="ql-empty">${searchQ || filter !== 'all' ? 'No matches' : 'No tasks yet'}</div>`
+        : visibleBuckets.map(b => `
+            <div class="tl-bucket">
+              <div class="tl-bucket-header">
+                <span class="tl-bucket-name">${escapeHtml(b.label)}</span>
+                <span class="tl-bucket-count">${b.tasks.length}</span>
+              </div>
+              <div class="ql-list">
+                ${b.tasks.map(r => renderTimelineRow(r, schema, {
+          doneCol, dateCol, nameCol, phaseCol
+        })).join('')}
+              </div>
+            </div>
+          `).join('')}
+    `;
+
+    bindTimelineEvents(schema, { doneCol, dateCol, phaseCol, hasDates });
+
+    setStatus('Synced ' + new Date().toLocaleTimeString());
+  } catch (err) {
+    setStatus('Failed');
+    toast(err.message);
+  }
+}
+
+// ---------- bucket helpers ----------
+
+function bucketByDate(rows, doneCol, dateCol) {
+  const buckets = [
+    { key: 'overdue', label: 'Overdue', tasks: [] },
+    { key: 'today', label: 'Today', tasks: [] },
+    { key: 'week', label: 'This week', tasks: [] },
+    { key: 'month', label: 'This month', tasks: [] },
+    { key: 'quarter', label: 'Next 3 months', tasks: [] },
+    { key: 'later', label: 'Later', tasks: [] },
+    { key: 'nodate', label: 'No date set', tasks: [] },
+    { key: 'done', label: 'Done', tasks: [] }
+  ];
+  const byKey = Object.fromEntries(buckets.map(b => [b.key, b]));
+
+  rows.forEach(r => {
+    if (doneCol && isChecked(r[doneCol])) { byKey.done.tasks.push(r); return; }
+    if (!r[dateCol]) { byKey.nodate.tasks.push(r); return; }
+    const d = daysUntil(r[dateCol]);
+    if (d == null) byKey.nodate.tasks.push(r);
+    else if (d < 0) byKey.overdue.tasks.push(r);
+    else if (d === 0) byKey.today.tasks.push(r);
+    else if (d <= 7) byKey.week.tasks.push(r);
+    else if (d <= 31) byKey.month.tasks.push(r);
+    else if (d <= 90) byKey.quarter.tasks.push(r);
+    else byKey.later.tasks.push(r);
+  });
+
+  // Sort each dated bucket chronologically
+  buckets.forEach(b => {
+    if (b.key === 'nodate' || b.key === 'done') return;
+    b.tasks.sort((a, b2) => {
+      const da = parseSheetDate(a[dateCol])?.getTime() ?? Infinity;
+      const db = parseSheetDate(b2[dateCol])?.getTime() ?? Infinity;
+      return da - db;
+    });
+  });
+
+  return buckets.filter(b => b.tasks.length > 0);
+}
+
+function bucketByPhase(rows, doneCol, phaseCol) {
+  if (!phaseCol) return [{ key: 'all', label: 'All tasks', tasks: rows.slice() }];
+  const groups = {};
+  rows.forEach(r => {
+    const phase = r[phaseCol] || 'Uncategorized';
+    (groups[phase] = groups[phase] || []).push(r);
+  });
+  return Object.entries(groups).map(([label, tasks]) => ({ key: label, label, tasks }));
+}
+
+// ---------- row renderers ----------
+
+function renderNextUpCard(row, schema, doneCol, dateCol, nameCol) {
+  const id = rowId(row, schema);
+  const name = row[nameCol] || '—';
+  const dateVal = dateCol ? row[dateCol] : '';
+  const d = dateVal ? daysUntil(dateVal) : null;
+  const overdue = d != null && d < 0;
+
+  let when = '';
+  if (d != null) {
+    if (d === 0) when = 'Today';
+    else if (d === 1) when = 'Tomorrow';
+    else if (d < 0) when = `${Math.abs(d)}d overdue`;
+    else if (d < 7) when = `in ${d}d`;
+    else when = fmtDateShort(dateVal);
+  }
+
+  return `
+    <div class="nextup-card ${overdue ? 'overdue' : ''}"
+         data-id="${escapeHtml(String(id))}" data-row="${row._row}">
+      <div class="nextup-when">${escapeHtml(when)}</div>
+      <div class="nextup-name">${escapeHtml(name)}</div>
+      ${dateVal ? `<div class="nextup-date">${escapeHtml(fmtDate(dateVal))}</div>` : ''}
+    </div>
+  `;
+}
+
+function renderTimelineRow(row, schema, { doneCol, dateCol, nameCol, phaseCol }) {
   const id = rowId(row, schema);
   const key = schema.sheet + ':' + id;
   const expanded = state.expanded === key;
-  const checked = roles.checkField ? isChecked(row[roles.checkField]) : false;
-  const name = row[roles.nameField] || '—';
-  const dateVal = roles.dateField ? row[roles.dateField] : '';
-  const overdue = dateVal && !checked && (daysUntil(dateVal) ?? 1) < 0;
+  const checked = doneCol ? isChecked(row[doneCol]) : false;
+  const name = row[nameCol] || '—';
+  const dateVal = dateCol ? row[dateCol] : '';
+  const phase = phaseCol ? row[phaseCol] : '';
+  const d = dateVal ? daysUntil(dateVal) : null;
+  const overdue = !checked && d != null && d < 0;
+
+  const dateBadge = (() => {
+    if (!dateVal) return `<div class="tl-date tl-date-empty"></div>`;
+    const date = parseSheetDate(dateVal);
+    if (!date) return `<div class="tl-date tl-date-empty"></div>`;
+    const month = date.toLocaleDateString(undefined, { month: 'short' });
+    const weekday = date.toLocaleDateString(undefined, { weekday: 'short' });
+    return `
+      <div class="tl-date ${overdue ? 'overdue' : ''}">
+        <div class="tl-date-month">${escapeHtml(month)}</div>
+        <div class="tl-date-day">${date.getDate()}</div>
+        <div class="tl-date-weekday">${escapeHtml(weekday)}</div>
+      </div>
+    `;
+  })();
 
   return `
-    <div class="ql-row ${checked ? 'done' : ''} ${expanded ? 'expanded' : ''}"
+    <div class="ql-row tl-row ${checked ? 'done' : ''} ${expanded ? 'expanded' : ''}"
          data-id="${escapeHtml(String(id))}" data-row="${row._row}">
       <div class="ql-row-main">
-        ${roles.checkField ? `
+        ${dateBadge}
+        ${doneCol ? `
           <button type="button" class="ql-check ${checked ? 'on' : ''}"
-                  data-action="toggle" aria-label="Toggle">
-            ${checked ? '✓' : ''}
-          </button>` : ''}
+                  data-action="toggle" aria-label="Toggle">${checked ? '✓' : ''}</button>
+        ` : ''}
         <div class="ql-row-info" data-action="expand">
           <div class="ql-row-name">${escapeHtml(name)}</div>
-          ${dateVal ? `
-            <div class="ql-row-meta">
-              <span class="ql-row-date ${overdue ? 'overdue' : ''}">${escapeHtml(fmtDateShort(dateVal))}</span>
-            </div>` : ''}
+          ${phase ? `<div class="ql-row-meta"><span class="pill">${escapeHtml(phase)}</span></div>` : ''}
         </div>
-        <button type="button" class="ql-more" data-action="expand" aria-label="More">⋯</button>
+        <button type="button" class="ql-more" data-action="expand">⋯</button>
       </div>
       ${expanded ? renderInlineEditor(row, schema) : ''}
     </div>
   `;
+}
+
+// ---------- events ----------
+
+function bindTimelineEvents(schema, { doneCol, dateCol, phaseCol, hasDates }) {
+  const view = $('#view');
+  if (!view) return;
+
+  // Filter chips
+  $$('.chip', view).forEach(chip => {
+    chip.onclick = () => {
+      state.filter[schema.sheet] = chip.dataset.filter;
+      render();
+    };
+  });
+
+  // Search
+  const search = $('#tl-search');
+  if (search) search.oninput = debounce(() => {
+    state.search[schema.sheet] = search.value;
+    render();
+  }, 200);
+
+  // Add
+  const addBtn = $('#tl-add');
+  if (addBtn) addBtn.onclick = () =>
+    showQuickAdd(schema, detectFieldRoles(schema), $('#tl-add-strip'));
+
+  // Row / next-up clicks
+  view.onclick = async (e) => {
+    // Next-up card: jump straight into the row's editor
+    const nextUp = e.target.closest('.nextup-card');
+    if (nextUp) {
+      const id = nextUp.dataset.id;
+      state.expanded = schema.sheet + ':' + id;
+      // Scroll to that row after re-render
+      setTimeout(() => {
+        const el = document.querySelector(`.ql-row[data-id="${CSS.escape(id)}"]`);
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 60);
+      return render();
+    }
+
+    const rowEl = e.target.closest('.ql-row');
+    if (!rowEl) return;
+    const id = rowEl.dataset.id;
+    const action = e.target.closest('[data-action]')?.dataset.action;
+
+    if (action === 'toggle') return toggleCheck(schema, { checkField: doneCol }, id, rowEl);
+    if (action === 'expand') return toggleExpand(schema, id);
+    if (action === 'save') return saveInline(schema, id, rowEl);
+    if (action === 'cancel') { state.expanded = null; return render(); }
+    if (action === 'delete') {
+      if (!confirm('Delete this task?')) return;
+      const res = await apiWrite('delete', schema.sheet, null, id, rowEl.dataset.row);
+      if (res.error) return toast('Delete failed: ' + res.error);
+      state.expanded = null;
+      toast('Deleted');
+      render();
+    }
+  };
 }
 
 function bindTimeline(schema, roles) {
