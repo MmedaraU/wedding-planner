@@ -1225,3 +1225,497 @@ td.empty {
     font-size: 12px;
   }
 }
+
+
+/* ============================================================
+   QUICK LIST — the workhorse list view
+   Used by: Bridal, Rentals, Venue Run, New Home Run,
+            Timeline, Gifts, Cash, Guest List
+   ============================================================ */
+
+/* ---------- header row (title + add button) ---------- */
+
+.ql-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.ql-top h1 { margin: 0; }
+
+/* ---------- search bar ---------- */
+
+.ql-controls {
+  margin-bottom: 12px;
+}
+
+.ql-controls input[type="search"] {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  -webkit-border-radius: var(--radius);
+  -moz-border-radius: var(--radius);
+  -ms-border-radius: var(--radius);
+  -o-border-radius: var(--radius);
+  border-radius: var(--radius);
+  font-size: 15px;
+  font-family: inherit;
+  background: var(--surface);
+  color: var(--text);
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  -webkit-transition: border-color 0.15s;
+  -moz-transition: border-color 0.15s;
+  -ms-transition: border-color 0.15s;
+  -o-transition: border-color 0.15s;
+  transition: border-color 0.15s;
+}
+.ql-controls input[type="search"]:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.ql-controls input[type="search"]::placeholder {
+  color: var(--muted);
+}
+
+/* ---------- progress strip ---------- */
+
+.ql-progress {
+  margin-bottom: 16px;
+}
+.ql-progress-text {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+  text-align: right;
+}
+.ql-count {
+  margin: 0 0 12px;
+  text-align: left;
+}
+
+/* ---------- list container ---------- */
+
+.ql-list {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  -webkit-border-radius: var(--radius);
+  -moz-border-radius: var(--radius);
+  -ms-border-radius: var(--radius);
+  -o-border-radius: var(--radius);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 24px;
+}
+
+.ql-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.ql-empty b {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---------- row ---------- */
+
+.ql-row {
+  border-bottom: 1px solid var(--border);
+  -webkit-transition: background 0.1s;
+  -moz-transition: background 0.1s;
+  -ms-transition: background 0.1s;
+  -o-transition: background 0.1s;
+  transition: background 0.1s;
+}
+.ql-row:last-child { border-bottom: none; }
+
+.ql-row-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+}
+.ql-row-main:hover { background: var(--surface-alt); }
+.ql-row.expanded > .ql-row-main { background: var(--surface-alt); }
+
+.ql-row-info {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.ql-row-name {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ql-row.done .ql-row-name {
+  color: var(--muted);
+  text-decoration: line-through;
+  -moz-text-decoration-color: #c9c4bf;
+  text-decoration-color: #c9c4bf;
+}
+
+.ql-row-meta {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.ql-row-date {
+  font-size: 12px;
+  color: var(--muted);
+}
+.ql-row-date.overdue {
+  color: var(--danger);
+  font-weight: 500;
+}
+
+/* ---------- checkbox button ---------- */
+
+.ql-check {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  -webkit-border-radius: 6px;
+  -moz-border-radius: 6px;
+  -ms-border-radius: 6px;
+  -o-border-radius: 6px;
+  border-radius: 6px;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  -moz-transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  -ms-transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  -o-transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+.ql-check:hover { border-color: var(--accent); }
+.ql-check:active { -webkit-transform: scale(0.94); -moz-transform: scale(0.94); -ms-transform: scale(0.94); -o-transform: scale(0.94); transform: scale(0.94); }
+.ql-check.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* ---------- expand "more" button ---------- */
+
+.ql-more {
+  background: none;
+  border: none;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 6px 8px;
+  -webkit-border-radius: var(--radius-sm);
+  -moz-border-radius: var(--radius-sm);
+  -ms-border-radius: var(--radius-sm);
+  -o-border-radius: var(--radius-sm);
+  border-radius: var(--radius-sm);
+  -webkit-transition: background 0.1s, color 0.1s;
+  -moz-transition: background 0.1s, color 0.1s;
+  -ms-transition: background 0.1s, color 0.1s;
+  -o-transition: background 0.1s, color 0.1s;
+  transition: background 0.1s, color 0.1s;
+  flex-shrink: 0;
+}
+.ql-more:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+/* ---------- inline editor (expanded row) ---------- */
+
+.ql-editor {
+  padding: 14px 14px 14px 48px;
+  background: var(--surface-alt);
+  border-top: 1px solid var(--border);
+  -webkit-animation: ql-slide-down 0.15s ease;
+  animation: ql-slide-down 0.15s ease;
+}
+
+@keyframes ql-slide-down {
+  from { opacity: 0; -webkit-transform: translateY(-4px); -moz-transform: translateY(-4px); -ms-transform: translateY(-4px); -o-transform: translateY(-4px); transform: translateY(-4px); }
+  to   { opacity: 1; -webkit-transform: translateY(0); -moz-transform: translateY(0); -ms-transform: translateY(0); -o-transform: translateY(0); transform: translateY(0); }
+}
+
+.ql-editor .field { margin-bottom: 10px; }
+.ql-editor .field:last-of-type { margin-bottom: 0; }
+
+.ql-editor-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.ql-editor-actions .btn-danger {
+  margin-right: auto;
+}
+
+/* ---------- quick add strip ---------- */
+
+.ql-quick-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+  background: var(--accent-soft);
+  border: 1px solid rgba(184, 114, 123, 0.2);
+  -webkit-border-radius: var(--radius);
+  -moz-border-radius: var(--radius);
+  -ms-border-radius: var(--radius);
+  -o-border-radius: var(--radius);
+  border-radius: var(--radius);
+  align-items: flex-end;
+  -webkit-animation: ql-slide-down 0.15s ease;
+  animation: ql-slide-down 0.15s ease;
+}
+
+.ql-quick-add .field-compact {
+  flex: 1;
+  min-width: 140px;
+  margin-bottom: 0;
+}
+
+.ql-quick-add .field-compact label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-bottom: 3px;
+  font-weight: 600;
+}
+
+.ql-quick-add .field-compact input,
+.ql-quick-add .field-compact select,
+.ql-quick-add .field-compact textarea {
+  padding: 7px 10px;
+  font-size: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.ql-quick-actions {
+  display: flex;
+  gap: 6px;
+  align-items: flex-end;
+}
+.ql-quick-actions .btn {
+  padding: 7px 12px;
+}
+
+/* ============================================================
+   CHIPS — category filters (Guest List)
+   ============================================================ */
+
+.chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.chip {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  -webkit-border-radius: 999px;
+  -moz-border-radius: 999px;
+  -ms-border-radius: 999px;
+  -o-border-radius: 999px;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  -webkit-transition: background 0.12s, border-color 0.12s, color 0.12s;
+  -moz-transition: background 0.12s, border-color 0.12s, color 0.12s;
+  -ms-transition: background 0.12s, border-color 0.12s, color 0.12s;
+  -o-transition: background 0.12s, border-color 0.12s, color 0.12s;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+.chip:hover {
+  background: var(--accent-soft);
+  border-color: rgba(184, 114, 123, 0.3);
+}
+.chip.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* ============================================================
+   RSVP — quick-tap chips inside a guest card
+   ============================================================ */
+
+.rsvp-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px 10px 48px;
+  background: var(--surface-alt);
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.rsvp-label {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  margin-right: 4px;
+}
+
+.rsvp-chip {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  -webkit-border-radius: 999px;
+  -moz-border-radius: 999px;
+  -ms-border-radius: 999px;
+  -o-border-radius: 999px;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  -webkit-transition: background 0.12s, border-color 0.12s, color 0.12s;
+  -moz-transition: background 0.12s, border-color 0.12s, color 0.12s;
+  -ms-transition: background 0.12s, border-color 0.12s, color 0.12s;
+  -o-transition: background 0.12s, border-color 0.12s, color 0.12s;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.rsvp-chip:hover {
+  background: #f5f3f1;
+}
+.rsvp-chip.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* ============================================================
+   PILL VARIANTS
+   ============================================================ */
+
+/* Red pill for "Not Coming" and similar negatives */
+.pill-red {
+  background: var(--danger-soft);
+  color: var(--danger-text);
+  border-color: transparent;
+}
+
+/* ============================================================
+   RESPONSIVE — quick list on mobile
+   ============================================================ */
+
+@media (max-width: 720px) {
+  .ql-top {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .ql-top h1 { margin-bottom: 0; }
+  .ql-top .btn { width: 100%; justify-content: center; }
+
+  .ql-row-main {
+    padding: 12px 12px;
+    gap: 8px;
+  }
+
+  .ql-row-name {
+    font-size: 14px;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  .ql-editor {
+    padding: 12px;
+  }
+
+  .ql-editor-actions {
+    flex-wrap: wrap;
+  }
+  .ql-editor-actions .btn {
+    flex: 1;
+    min-width: 0;
+  }
+  .ql-editor-actions .btn-danger {
+    flex: 0 0 auto;
+    margin-right: 0;
+  }
+
+  .ql-quick-add {
+    padding: 10px;
+  }
+  .ql-quick-add .field-compact {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .ql-quick-actions {
+    flex: 1 1 100%;
+    justify-content: flex-end;
+  }
+
+  .rsvp-row {
+    padding: 10px 12px;
+    gap: 6px;
+  }
+  .rsvp-chip {
+    flex: 1;
+    text-align: center;
+    padding: 8px 10px;
+  }
+  .rsvp-label {
+    flex: 1 1 100%;
+    margin: 0 0 4px;
+  }
+
+  .chips {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 4px;
+    margin-bottom: 10px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .chip { flex-shrink: 0; }
+}
