@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wedding Planner</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+
+  <div id="app">
+    <aside class="sidebar">
+      <div class="brand">Wedding Planner</div>
+      <nav id="nav"></nav>
+      <div class="sidebar-footer">
+        <span id="status" class="status">Loading…</span>
+        <button id="refresh-btn" class="btn btn-ghost">Refresh</button>
+      </div>
+    </aside>
+
+    <main id="view" class="view"></main>
+  </div>
+
+  <div id="modal" class="modal" hidden>
+    <div class="modal-content">
+      <h2 id="modal-title"></h2>
+      <form id="modal-form"></form>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+
+</html>
