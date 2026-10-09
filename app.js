@@ -129,10 +129,61 @@ function isChecked(v) {
 }
 
 function daysUntil(dateStr) {
-  if (!dateStr) return null;
-  const target = new Date(dateStr);
-  if (isNaN(target)) return null;
-  return Math.ceil((target - new Date()) / (1000 * 60 * 60 * 24));
+  const target = parseSheetDate(dateStr);
+  if (!target) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  target.setHours(0, 0, 0, 0);
+  return Math.round((target - today) / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * Parses a value coming from a Google Sheet cell and returns a Date
+ * at local midnight. Handles:
+ *   - ISO strings:      "2026-06-14T00:00:00.000Z"
+ *   - plain dates:      "2026-06-14"
+ *   - human strings:    "June 14, 2026"
+ * Returns null if unparseable.
+ */
+function parseSheetDate(val) {
+  if (val == null || val === '') return null;
+  const s = String(val);
+
+  // Take just the YYYY-MM-DD prefix, ignore time and timezone
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) {
+    return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+  }
+
+  const d = new Date(s);
+  return isNaN(d) ? null : d;
+}
+
+/**
+ * Formats a date value as "Sunday, June 14, 2026".
+ * Falls back to the raw string if the value can't be parsed.
+ */
+function fmtLongDate(val) {
+  const d = parseSheetDate(val);
+  if (!d) return val ? String(val) : '—';
+  return d.toLocaleDateString(undefined, {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+}
+
+/**
+ * Normalizes a date value to "YYYY-MM-DD" for an <input type="date">.
+ */
+function toISODate(val) {
+  const d = parseSheetDate(val);
+  if (!d) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function debounce(fn, ms) {
@@ -313,7 +364,7 @@ async function renderOverview() {
       <div class="hero">
         <div class="hero-left">
           <div class="hero-couple">${escapeHtml(coupleName)}</div>
-          <div class="hero-date">${escapeHtml(meta.wedding_date || '')}</div>
+          <div class="hero-date">${escapeHtml(fmtLongDate(meta.wedding_date))}</div>
           <div class="hero-venue">${escapeHtml(meta.wedding_venue_name || meta.reception_venue_name || '')}</div>
           ${hashtag ? `<div class="hero-hashtag">${escapeHtml(hashtag)}</div>` : ''}
         </div>
@@ -325,13 +376,8 @@ async function renderOverview() {
 
       ${datesGroup.length ? `
         <h2>Key dates</h2>
-        <table class="info-table"><tbody>
-          ${datesGroup.map(d => `
-            <tr>
-              <td class="info-label">${escapeHtml(d.label)}</td>
-              <td>${escapeHtml(d.value || '—')}</td>
-            </tr>
-          `).join('')}
+        <table class="info-table meta-table"><tbody>
+          ${datesGroup.map(d => renderMetaRow('Dates', d)).join('')}
         </tbody></table>
       ` : ''}
 
@@ -349,28 +395,26 @@ async function renderOverview() {
       ${stats.budget_budgeted ? renderProgress(budgetUsedPct, 'Budget used') : ''}
 
       ${Object.entries(metaGrouped)
-        .filter(([group]) => !['Couple', 'Dates'].includes(group))
+        .filter(([group]) => group !== 'Dates')
         .map(([group, items]) => `
           <div class="meta-group">
             <div class="meta-group-name">${escapeHtml(group)}</div>
-            <table class="info-table"><tbody>
-              ${items.map(it => `
-                <tr>
-                  <td class="info-label">${escapeHtml(it.label)}</td>
-                  <td>${escapeHtml(String(it.value || ''))}</td>
-                </tr>
-              `).join('')}
+            <table class="info-table meta-table"><tbody>
+              ${items.map(it => renderMetaRow(group, it)).join('')}
             </tbody></table>
           </div>
         `).join('')}
     `;
 
+    bindOverviewMeta();
     setStatus('Synced ' + new Date().toLocaleTimeString());
   } catch (err) {
     setStatus('Failed');
     toast('Could not load overview: ' + err.message);
   }
 }
+
+
 
 // ============================================================
 // VIEW: TIMELINE (Planning Schedule)
@@ -1383,3 +1427,103 @@ if (refreshBtn) refreshBtn.onclick = () => render();
 
 // No setInterval auto-refresh — it was clobbering inline edits.
 boot();
+
+
+function renderMetaRow(group, item) {
+  const key = item.key;
+  const expanded = state.expanded === '_app_meta:' + key;
+  const rawValue = item.value == null ? '' : String(item.value);
+  const isDate = group === 'Dates';
+  const displayValue = isDate ? fmtLongDate(rawValue) : (rawValue || '—');
+
+  let inputHtml;
+  if (isDate) {
+    inputHtml = `<input type="date" value="${toISODate(rawValue)}" data-meta-input>`;
+  } else {
+    inputHtml = `<input type="text" value="${escapeHtml(rawValue)}" data-meta-input>`;
+  }
+
+  return `
+    <tr class="meta-row ${expanded ? 'expanded' : ''}" data-key="${escapeHtml(key)}">
+      <td class="info-label">${escapeHtml(item.label)}</td>
+      <td class="meta-value" data-action="expand">
+        <span class="meta-value-text">${escapeHtml(displayValue)}</span>
+        <span class="meta-edit-icon" aria-hidden="true">✎</span>
+      </td>
+    </tr>
+    ${expanded ? `
+      <tr class="meta-editor-row" data-key="${escapeHtml(key)}">
+        <td colspan="2">
+          <div class="meta-editor">
+            ${inputHtml}
+            <div class="meta-editor-actions">
+              <button type="button" class="btn" data-action="cancel">Cancel</button>
+              <button type="button" class="btn btn-primary" data-action="save">Save</button>
+            </div>
+          </div>
+        </td>
+      </tr>
+    ` : ''}
+  `;
+}
+
+function bindOverviewMeta() {
+  const view = $('#view');
+  if (!view) return;
+
+  view.onclick = async (e) => {
+    // Open / close editor
+    const openTrigger = e.target.closest('[data-action="expand"]');
+    if (openTrigger) {
+      const metaRow = openTrigger.closest('.meta-row');
+      if (!metaRow) return;
+      const key = metaRow.dataset.key;
+      state.expanded = state.expanded === '_app_meta:' + key
+        ? null
+        : '_app_meta:' + key;
+      return renderOverview();
+    }
+
+    // Editor actions
+    const editorRow = e.target.closest('.meta-editor-row');
+    if (editorRow) {
+      const key = editorRow.dataset.key;
+      const action = e.target.dataset.action;
+
+      if (action === 'cancel') {
+        state.expanded = null;
+        return renderOverview();
+      }
+
+      if (action === 'save') {
+        const input = editorRow.querySelector('[data-meta-input]');
+        if (!input) return;
+        const newValue = input.value.trim();
+        const res = await apiWrite('update', '_app_meta', { value: newValue }, key);
+        if (res.error) return toast('Save failed: ' + res.error);
+        state.expanded = null;
+        toast('Saved');
+        return renderOverview();
+      }
+    }
+  };
+
+  // Auto-focus + Enter/Escape shortcuts
+  const input = view.querySelector('[data-meta-input]');
+  if (input) {
+    input.focus();
+    if (input.type === 'text' && input.value) input.setSelectionRange(input.value.length, input.value.length);
+
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const row = input.closest('.meta-editor-row');
+        row?.querySelector('[data-action="save"]')?.click();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        state.expanded = null;
+        renderOverview();
+      }
+    };
+  }
+}

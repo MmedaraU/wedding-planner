@@ -1644,6 +1644,131 @@ td.empty {
 }
 
 /* ============================================================
+   OVERVIEW — editable meta items
+   ============================================================ */
+
+.meta-table .meta-row {
+  cursor: pointer;
+}
+.meta-table .meta-row:hover td {
+  background: var(--surface-alt);
+}
+
+.meta-table .meta-value {
+  position: relative;
+  padding-right: 36px;
+  -webkit-transition: color 0.12s;
+  -moz-transition: color 0.12s;
+  -ms-transition: color 0.12s;
+  -o-transition: color 0.12s;
+  transition: color 0.12s;
+}
+.meta-table .meta-row:hover .meta-value {
+  color: var(--accent);
+}
+
+.meta-edit-icon {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  -webkit-transform: translateY(-50%);
+  -moz-transform: translateY(-50%);
+  -ms-transform: translateY(-50%);
+  -o-transform: translateY(-50%);
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: 13px;
+  opacity: 0;
+  -webkit-transition: opacity 0.15s, color 0.15s;
+  -moz-transition: opacity 0.15s, color 0.15s;
+  -ms-transition: opacity 0.15s, color 0.15s;
+  -o-transition: opacity 0.15s, color 0.15s;
+  transition: opacity 0.15s, color 0.15s;
+  pointer-events: none;
+}
+.meta-table .meta-row:hover .meta-edit-icon {
+  opacity: 1;
+  color: var(--accent);
+}
+
+.meta-table .meta-row.expanded td {
+  background: var(--surface-alt);
+}
+.meta-table .meta-row.expanded .meta-edit-icon {
+  display: none;
+}
+
+.meta-editor-row td {
+  padding: 0;
+  background: var(--surface-alt);
+  border-bottom: 1px solid var(--border);
+}
+
+.meta-editor {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 12px 14px;
+  -webkit-animation: ql-slide-down 0.15s ease;
+  animation: ql-slide-down 0.15s ease;
+}
+
+.meta-editor input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  -webkit-border-radius: var(--radius-sm);
+  -moz-border-radius: var(--radius-sm);
+  -ms-border-radius: var(--radius-sm);
+  -o-border-radius: var(--radius-sm);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-family: inherit;
+  background: var(--surface);
+  color: var(--text);
+  -webkit-transition: border-color 0.15s, box-shadow 0.15s;
+  -moz-transition: border-color 0.15s, box-shadow 0.15s;
+  -ms-transition: border-color 0.15s, box-shadow 0.15s;
+  -o-transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.meta-editor input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.meta-editor-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.meta-editor-actions .btn {
+  padding: 7px 12px;
+}
+
+@media (max-width: 720px) {
+  .meta-editor {
+    flex-wrap: wrap;
+  }
+  .meta-editor input {
+    flex: 1 1 100%;
+  }
+  .meta-editor-actions {
+    flex: 1 1 100%;
+    justify-content: flex-end;
+  }
+  .meta-table .meta-value {
+    padding-right: 32px;
+  }
+  .meta-edit-icon {
+    opacity: 1;
+    color: var(--muted);
+  }
+}
+
+/* ============================================================
    RESPONSIVE — quick list on mobile
    ============================================================ */
 
