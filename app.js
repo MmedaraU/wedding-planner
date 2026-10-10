@@ -12,11 +12,49 @@ const VENDOR_SOURCES = [
 ];
 
 const VIRTUAL_NAV = [
-  { route: '_overview', label: 'Overview', order: 0 },
-  { route: '_today', label: 'Today', order: 5 },
+  { route: '_today', label: 'Today', order: 0 },
+  { route: '_overview', label: 'Overview', order: 5 },
   { route: '_vendors', label: 'Vendors', order: 55 },
   { route: '_wedding_day', label: 'Wedding Day', order: 95 }
 ];
+
+// Short one-line explanations shown under each view's title
+const SUBTITLES = {
+  '_today': 'What needs your attention right now',
+  '_overview': 'The wedding at a glance',
+  '_vendors': 'Every supplier, grouped by pipeline stage',
+  '_wedding_day': 'Contacts, venues, music, and menu for the day itself',
+  '_search': 'Searching across every sheet',
+
+  'Planning Schedule': 'Every task, from proposal to after-party',
+  'Bridal List': 'Dowry, ceremony items, and traditions — grouped by section',
+  'Rentals Tracker': "What we're borrowing, and when it goes back",
+  'budget_flat': 'Every naira in, every naira out',
+  'Guest List': "Who's coming, who's pending, who needs a hotel",
+  'Gifts Received': "Presents received, and who's been thanked",
+  'Cash Contributions': 'Contributions received, and who\'s been thanked',
+  'Things to get to and from venue': 'Things to carry to the venue, and bring back',
+  'Things to take back to new home': 'Things to move into the new home'
+};
+
+function injectSubtitle() {
+  const view = $('#view');
+  if (!view) return;
+
+  // Remove any stale subtitle from a previous render
+  view.querySelectorAll('.view-subtitle').forEach(el => el.remove());
+
+  const text = SUBTITLES[state.route];
+  if (!text) return;
+
+  const h1 = view.querySelector('h1');
+  if (!h1) return;
+
+  const p = document.createElement('p');
+  p.className = 'view-subtitle';
+  p.textContent = text;
+  h1.insertAdjacentElement('afterend', p);
+}
 
 const state = {
   schema: [],
@@ -307,8 +345,12 @@ function renderInlineEditor(row, schema) {
 // ============================================================
 // Dispatcher
 // ============================================================
-
 async function render() {
+  await renderView();
+  injectSubtitle();
+}
+
+async function renderView() {
   if (state.route === '_overview') return renderOverview();
   if (state.route === '_today') return renderToday();
   if (state.route === '_vendors') return renderVendors();
@@ -1740,7 +1782,7 @@ function renderNav() {
     items.push({ route: '__link__' + s.sheet, label: s.label + ' ↗', order: s.sortOrder, url: s.url });
   });
 
-  items.sort((a, b) => (a.order || 100) - (b.order || 100));
+  items.sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
 
   nav.innerHTML = items.map(it => {
     if (it.url) {

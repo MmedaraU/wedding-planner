@@ -2375,3 +2375,29 @@ td.empty {
   border-color: var(--accent);
   color: var(--accent);
 }
+
+/* ============================================================
+   VIEW SUBTITLE
+   ============================================================ */
+
+.view-subtitle {
+  margin: -16px 0 24px;
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.4;
+  max-width: 640px;
+}
+
+/* When the title sits inside a toolbar (Timeline, Budget, Guests, etc.),
+   the toolbar already has margin-bottom, so just nudge the subtitle up */
+.toolbar + .view-subtitle,
+.toolbar > h1 + .view-subtitle {
+  margin-top: -8px;
+}
+
+@media (max-width: 720px) {
+  .view-subtitle {
+    margin: -12px 0 20px;
+    font-size: 13px;
+  }
+}
