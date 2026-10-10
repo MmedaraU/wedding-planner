@@ -436,87 +436,6 @@ async function renderTimeline(schema) {
     Object.assign(schema, roles);
 
     const doneCol = roles.checkField;
-    const phaseCol = cols.find(c => /phase|section|stage/i.test(c)) || '';
-    const total = rows.length;
-    const doneCount = doneCol ? rows.filter(r => isChecked(r[doneCol])).length : 0;
-    const pct = total ? (doneCount / total) * 100 : 0;
-
-    // Group by phase, then sort within phase by date
-    const groups = {};
-    rows.forEach(r => {
-      const phase = phaseCol ? (r[phaseCol] || 'Unscheduled') : 'All tasks';
-      if (!groups[phase]) groups[phase] = [];
-      groups[phase].push(r);
-    });
-
-    const phaseOrder = phaseCol
-      ? Object.keys(groups).sort((a, b) => {
-        // Keep insertion order for phases as they appear in the sheet
-        const ia = rows.findIndex(r => (r[phaseCol] || 'Unscheduled') === a);
-        const ib = rows.findIndex(r => (r[phaseCol] || 'Unscheduled') === b);
-        return ia - ib;
-      })
-      : Object.keys(groups);
-
-    $('#view').innerHTML = `
-      <div class="toolbar">
-        <h1>${escapeHtml(schema.label)}</h1>
-        <button class="btn btn-primary" id="tl-add">+ Add task</button>
-      </div>
-
-      ${renderStats([
-      { label: 'Total', value: total },
-      { label: 'Done', value: doneCount },
-      { label: 'Left', value: total - doneCount }
-    ])}
-
-      ${renderProgress(pct, 'Progress')}
-
-      <div id="tl-add-strip"></div>
-
-      ${phaseOrder.map(phase => {
-      const tasks = groups[phase];
-      const phaseDone = doneCol ? tasks.filter(t => isChecked(t[doneCol])).length : 0;
-      const phasePct = tasks.length ? (phaseDone / tasks.length) * 100 : 0;
-
-      return `
-          <h2>${escapeHtml(phase)}</h2>
-          ${renderProgress(phasePct, '')}
-          <div class="ql-list">
-            ${tasks.map(t => renderTimelineRow(t, schema, roles)).join('')}
-          </div>
-        `;
-    }).join('')}
-    `;
-
-    bindTimeline(schema, roles);
-    setStatus('Synced ' + new Date().toLocaleTimeString());
-  } catch (err) {
-    setStatus('Failed');
-    toast(err.message);
-  }
-}
-
-// ============================================================
-// VIEW: TIMELINE
-// ============================================================
-
-async function renderTimeline(schema) {
-  setStatus('Loading timeline…');
-  try {
-    const res = await apiGetRows(schema.sheet);
-    if (res.error) throw new Error(res.error);
-    const rows = res.rows || [];
-    state.data[schema.sheet] = rows;
-
-    if (rows.length > 0 && !schema.columns) {
-      schema.columns = Object.keys(rows[0]).filter(k => k !== '_row');
-    }
-    const cols = schema.columns || [];
-    const roles = detectFieldRoles(schema);
-    Object.assign(schema, roles);
-
-    const doneCol = roles.checkField;
     const dateCol = roles.dateField;
     const nameCol = roles.nameField;
     const phaseCol = cols.find(c => /phase|section|stage|month|when/i.test(c)) || '';
@@ -826,10 +745,6 @@ function bindTimelineEvents(schema, { doneCol, dateCol, phaseCol, hasDates }) {
       render();
     }
   };
-}
-
-function bindTimeline(schema, roles) {
-  bindQuickListCommon(schema, roles, 'tl-add', 'tl-add-strip');
 }
 
 // ============================================================
