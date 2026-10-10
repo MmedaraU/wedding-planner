@@ -2477,6 +2477,8 @@ h1, h2, h3,
 .contact-name,
 .section-name {
   font-family: var(--font-display);
+  -webkit-font-feature-settings: "ss01";
+  -moz-font-feature-settings: "ss01";
   font-feature-settings: "ss01";
 }
 
@@ -2524,6 +2526,10 @@ h3 { font-weight: 600; }
   background: rgba(255, 255, 255, 0.12);
   border-color: rgba(255, 255, 255, 0.18);
   color: #fff;
+  -webkit-transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  -moz-transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  -ms-transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+  -o-transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
   transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 .sidebar-search input[type="search"]::placeholder {
@@ -2557,15 +2563,27 @@ h3 { font-weight: 600; }
   border-color: transparent;
   color: #fff;
   box-shadow: 0 2px 8px rgba(30, 42, 106, 0.22);
+  -webkit-transition: transform 0.12s, box-shadow 0.15s, background 0.15s;
+  -moz-transition: transform 0.12s, box-shadow 0.15s, background 0.15s;
+  -ms-transition: transform 0.12s, box-shadow 0.15s, background 0.15s;
+  -o-transition: transform 0.12s, box-shadow 0.15s, background 0.15s;
   transition: transform 0.12s, box-shadow 0.15s, background 0.15s;
 }
 .btn-primary:hover {
   background: var(--gradient-hover);
   border-color: transparent;
+  -webkit-transform: translateY(-1px);
+  -moz-transform: translateY(-1px);
+  -ms-transform: translateY(-1px);
+  -o-transform: translateY(-1px);
   transform: translateY(-1px);
   box-shadow: 0 4px 14px rgba(30, 42, 106, 0.30);
 }
 .btn-primary:active {
+  -webkit-transform: translateY(0);
+  -moz-transform: translateY(0);
+  -ms-transform: translateY(0);
+  -o-transform: translateY(0);
   transform: translateY(0);
   box-shadow: 0 2px 6px rgba(30, 42, 106, 0.24);
 }
