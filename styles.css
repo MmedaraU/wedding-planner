@@ -2314,3 +2314,64 @@ td.empty {
 @media print {
   .sidebar-search { display: none !important; }
 }
+
+/* Contact card: role header + name + phone + buttons */
+.contact-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  -webkit-border-radius: var(--radius);
+  -moz-border-radius: var(--radius);
+  -ms-border-radius: var(--radius);
+  -o-border-radius: var(--radius);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+}
+
+.contact-role {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+.contact-name {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.contact-phone {
+  font-size: 13px;
+  color: var(--muted);
+  -webkit-font-feature-settings: "tnum";
+  -moz-font-feature-settings: "tnum";
+  font-feature-settings: "tnum";  /* tabular figures */
+  margin-bottom: 10px;
+}
+
+.contact-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: auto;
+}
+
+.contact-actions .btn-ghost {
+  flex: 1;
+  justify-content: center;
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.contact-actions .btn-ghost:hover {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}

@@ -161,6 +161,17 @@ function waLink(raw) {
 }
 function pluralize(n, s) { return n + ' ' + s + (n === 1 ? '' : 's'); }
 
+function normalizePhone(raw) {
+  if (!raw) return '';
+  const s = String(raw).trim();
+  const digits = s.replace(/\D/g, '');
+  // Nigerian mobile: 10 digits starting 7/8/9 → prepend 0
+  if (digits.length === 10 && /^[789]/.test(digits)) return '0' + digits;
+  // 13 digits starting 234 → already international
+  if (digits.length === 13 && digits.startsWith('234')) return '0' + digits.slice(3);
+  return s;
+}
+
 // ============================================================
 // Field role detection (resilient)
 // ============================================================
@@ -1550,14 +1561,27 @@ async function renderWeddingDay() {
       .flatMap(g => (groups[g] || []).map(r => ({ ...r, _group: g })));
 
     // Group team by person (name + phone pairs)
-    const teamCards = [];
     const teamByKey = {};
+    const teamCards = [];
     team.forEach(r => {
-      const key = r.key.replace(/_phone$/, '');
-      if (!teamByKey[key]) { teamByKey[key] = { label: '', phone: '', _labelDone: false }; teamCards.push(teamByKey[key]); }
-      if (/phone$/i.test(r.key)) teamByKey[key].phone = r.value;
-      else teamByKey[key].label = r.label || r.key;
+      const m = String(r.key || '').match(/^(.*?)_(name|phone)$/i);
+      if (!m) return;
+      const personKey = m[1];
+      const kind = m[2].toLowerCase();
+      if (!teamByKey[personKey]) {
+        teamByKey[personKey] = { role: '', name: '', phone: '' };
+        teamCards.push(teamByKey[personKey]);
+      }
+      const card = teamByKey[personKey];
+      if (kind === 'name') {
+        card.name = String(r.value || '').trim();
+        card.role = String(r.label || '').replace(/\s+name$/i, '').trim() || r.key;
+      } else {
+        card.phone = String(r.value || '').trim();
+      }
     });
+    // Hide roles with no data at all
+    const visibleCards = teamCards.filter(c => c.name || c.phone);
 
     $('#view').innerHTML = `
       <div class="toolbar">
@@ -1565,23 +1589,25 @@ async function renderWeddingDay() {
         <button class="btn" onclick="window.print()">🖨 Print</button>
       </div>
 
-      ${teamCards.length ? `
-        <h2>Team contacts</h2>
-        <div class="contact-grid">
-          ${teamCards.map(t => {
-      const tel = telLink(t.phone);
-      const wa = waLink(t.phone);
+${visibleCards.length ? `
+  <h2>Team contacts</h2>
+  <div class="contact-grid">
+    ${visibleCards.map(t => {
+      const display = normalizePhone(t.phone);
+      const tel = telLink(display);
+      const wa = waLink(display);
       return `<div class="contact-card">
-              <div class="contact-role">${escapeHtml(t.label)}</div>
-              <div class="contact-phone">${escapeHtml(t.phone || '—')}</div>
-              ${t.phone ? `<div class="contact-actions">
-                <a class="btn btn-ghost" href="${escapeHtml(tel)}">📞 Call</a>
-                <a class="btn btn-ghost" href="${escapeHtml(wa)}" target="_blank" rel="noopener">💬 WhatsApp</a>
-              </div>` : ''}
-            </div>`;
+        <div class="contact-role">${escapeHtml(t.role)}</div>
+        <div class="contact-name">${escapeHtml(t.name || '—')}</div>
+        <div class="contact-phone">${escapeHtml(display || '—')}</div>
+        ${display ? `<div class="contact-actions">
+          <a class="btn btn-ghost" href="${escapeHtml(tel)}">📞 Call</a>
+          <a class="btn btn-ghost" href="${escapeHtml(wa)}" target="_blank" rel="noopener">💬 WhatsApp</a>
+        </div>` : ''}
+      </div>`;
     }).join('')}
-        </div>
-      ` : ''}
+  </div>
+` : ''}
 
       ${venues.length ? `
         <h2>Venues</h2>
