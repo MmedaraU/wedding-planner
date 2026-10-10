@@ -14,8 +14,8 @@ const VENDOR_SOURCES = [
 const VIRTUAL_NAV = [
   { route: '_today', label: 'Today', order: 0 },
   { route: '_overview', label: 'Overview', order: 5 },
-  { route: '_vendors', label: 'Vendors', order: 55 },
-  { route: '_wedding_day', label: 'Wedding Day', order: 95 }
+  { route: '_team', label: 'Team', order: 15 },
+  { route: '_vendors', label: 'Vendors', order: 55 }
 ];
 
 // Short one-line explanations shown under each view's title
@@ -23,7 +23,7 @@ const SUBTITLES = {
   '_today': 'What needs your attention right now',
   '_overview': 'The wedding at a glance',
   '_vendors': 'Every supplier, grouped by pipeline stage',
-  '_wedding_day': 'Contacts, venues, music, and menu for the day itself',
+  '_team': 'Everyone working on the wedding, with contacts and quantities',
   '_search': 'Searching across every sheet',
 
   'Planning Schedule': 'Every task, from proposal to after-party',
@@ -354,8 +354,8 @@ async function renderView() {
   if (state.route === '_overview') return renderOverview();
   if (state.route === '_today') return renderToday();
   if (state.route === '_vendors') return renderVendors();
-  if (state.route === '_wedding_day') return renderWeddingDay();
   if (state.route === '_search') return renderSearch();
+  if (state.route === '_team') return renderTeamPage();
 
   const schema = currentSchema();
   if (!schema) { $('#view').innerHTML = '<h1>Not found</h1>'; return; }
@@ -428,7 +428,7 @@ async function renderOverview() {
       ${stats.budget_budgeted ? renderProgress(budgetUsedPct, 'Budget used') : ''}
 
       ${Object.entries(metaGrouped)
-        .filter(([g]) => !['Dates'].includes(g))
+        .filter(([g]) => !['Dates', 'Couple', 'Team'].includes(g))
         .map(([g, items]) => `
           <div class="meta-group">
             <div class="meta-group-name">${escapeHtml(g)}</div>
@@ -504,6 +504,70 @@ function bindOverviewMeta() {
       if (e.key === 'Enter') { e.preventDefault(); input.closest('.meta-editor-row').querySelector('[data-action="save"]')?.click(); }
       else if (e.key === 'Escape') { e.preventDefault(); state.expanded = null; renderOverview(); }
     };
+  }
+}
+
+
+// ============================================================
+// VIEW: Team
+// ============================================================
+async function renderTeamPage() {
+  setStatus('Loading team…');
+  try {
+    const res = await apiGetOverview();
+    if (res.error) throw new Error(res.error);
+    const team = res.team || [];
+
+    const q = (state.search._team || '').toLowerCase();
+    const filtered = q
+      ? team.filter(t => [t.role, t.contact, t.phone, t.events, t.description].join(' ').toLowerCase().includes(q))
+      : team;
+
+    const withPhone = team.filter(t => t.phone).length;
+
+    $('#view').innerHTML = `
+      <div class="toolbar">
+        <h1>Team</h1>
+        <span class="pill">${team.length} ${team.length === 1 ? 'role' : 'roles'} · ${withPhone} with number</span>
+      </div>
+      <div class="ql-controls">
+        <input type="search" id="team-search" placeholder="Search team…" value="${escapeHtml(state.search._team || '')}">
+      </div>
+      ${filtered.length === 0
+        ? `<div class="ql-empty">${q ? 'No matches' : 'No team members yet'}</div>`
+        : `<div class="contact-grid team-grid">
+            ${filtered.map(t => {
+          const display = normalizePhone(t.phone);
+          const tel = telLink(display);
+          const wa = waLink(display);
+          const hasPhone = !!display;
+          return `<div class="contact-card team-card ${hasPhone ? '' : 'no-phone'}">
+                <div class="contact-role">${escapeHtml(t.role)}</div>
+                ${t.contact ? `<div class="contact-name">${escapeHtml(t.contact)}</div>` : ''}
+                ${hasPhone ? `<div class="contact-phone">${escapeHtml(display)}</div>` : ''}
+                ${(t.events || t.qty) ? `<div class="team-meta-row">
+                  ${t.events ? `<span class="pill">${escapeHtml(t.events)}</span>` : ''}
+                  ${t.qty ? `<span class="pill">🍽 ${escapeHtml(t.qty)}</span>` : ''}
+                </div>` : ''}
+                ${t.description ? `<div class="team-desc">${escapeHtml(t.description)}</div>` : ''}
+                ${hasPhone ? `<div class="contact-actions">
+                  <a class="btn btn-ghost" href="${escapeHtml(tel)}">📞 Call</a>
+                  <a class="btn btn-ghost" href="${escapeHtml(wa)}" target="_blank" rel="noopener">💬 WhatsApp</a>
+                </div>` : ''}
+              </div>`;
+        }).join('')}
+          </div>`}
+    `;
+
+    const search = $('#team-search');
+    if (search) search.oninput = debounce(() => {
+      state.search._team = search.value;
+      renderTeamPage();
+    }, 200);
+
+    setStatus('Synced ' + new Date().toLocaleTimeString());
+  } catch (err) {
+    setStatus('Failed'); toast(err.message);
   }
 }
 
@@ -1602,28 +1666,7 @@ async function renderWeddingDay() {
     const venues = ['Wedding Venue', 'TM Venue', 'Reception Venue', 'Friends Night', 'Hotel']
       .flatMap(g => (groups[g] || []).map(r => ({ ...r, _group: g })));
 
-    // Group team by person (name + phone pairs)
-    const teamByKey = {};
-    const teamCards = [];
-    team.forEach(r => {
-      const m = String(r.key || '').match(/^(.*?)_(name|phone)$/i);
-      if (!m) return;
-      const personKey = m[1];
-      const kind = m[2].toLowerCase();
-      if (!teamByKey[personKey]) {
-        teamByKey[personKey] = { role: '', name: '', phone: '' };
-        teamCards.push(teamByKey[personKey]);
-      }
-      const card = teamByKey[personKey];
-      if (kind === 'name') {
-        card.name = String(r.value || '').trim();
-        card.role = String(r.label || '').replace(/\s+name$/i, '').trim() || r.key;
-      } else {
-        card.phone = String(r.value || '').trim();
-      }
-    });
-    // Hide roles with no data at all
-    const visibleCards = teamCards.filter(c => c.name || c.phone);
+
 
     $('#view').innerHTML = `
       <div class="toolbar">
@@ -1631,25 +1674,8 @@ async function renderWeddingDay() {
         <button class="btn" onclick="window.print()">🖨 Print</button>
       </div>
 
-${visibleCards.length ? `
-  <h2>Team contacts</h2>
-  <div class="contact-grid">
-    ${visibleCards.map(t => {
-      const display = normalizePhone(t.phone);
-      const tel = telLink(display);
-      const wa = waLink(display);
-      return `<div class="contact-card">
-        <div class="contact-role">${escapeHtml(t.role)}</div>
-        <div class="contact-name">${escapeHtml(t.name || '—')}</div>
-        <div class="contact-phone">${escapeHtml(display || '—')}</div>
-        ${display ? `<div class="contact-actions">
-          <a class="btn btn-ghost" href="${escapeHtml(tel)}">📞 Call</a>
-          <a class="btn btn-ghost" href="${escapeHtml(wa)}" target="_blank" rel="noopener">💬 WhatsApp</a>
-        </div>` : ''}
-      </div>`;
-    }).join('')}
-  </div>
-` : ''}
+
+      
 
       ${venues.length ? `
         <h2>Venues</h2>
