@@ -2401,3 +2401,338 @@ td.empty {
     font-size: 13px;
   }
 }
+
+/* ============================================================
+   THEME — Royal Blue → Purple gradient, Gold accent
+   ============================================================ */
+
+:root {
+  /* Surfaces */
+  --bg: #f5f5fa;
+  --surface: #ffffff;
+  --surface-alt: #fafaff;
+
+  /* Text */
+  --text: #14182c;
+  --muted: #6b6b85;
+  --muted-soft: #9a9ab0;
+
+  /* Borders */
+  --border: #e4e4ef;
+  --border-soft: #f0f0f7;
+
+  /* Brand gradient */
+  --grad-from: #1e2a6a;
+  --grad-via:  #3a2a78;
+  --grad-to:   #5b2c8c;
+  --gradient: linear-gradient(135deg, var(--grad-from) 0%, var(--grad-via) 50%, var(--grad-to) 100%);
+  --gradient-hover: linear-gradient(135deg, #253180 0%, #46338a 50%, #673399 100%);
+  --gradient-soft: linear-gradient(135deg, #eef0fb 0%, #f3eefb 100%);
+
+  /* Accent — warm gold */
+  --accent: #c9973f;
+  --accent-hover: #b3852f;
+  --accent-soft: #fbf4e3;
+  --accent-ring: rgba(201, 151, 63, 0.28);
+
+  /* Semantic */
+  --danger: #c04848;
+  --danger-soft: #fbeaea;
+  --danger-text: #8a2d2d;
+  --success: #3d8a5e;
+  --success-soft: #e6f4ea;
+  --success-text: #2d6a4f;
+  --warning-soft: #fff4e0;
+  --warning-text: #a15c00;
+
+  /* Shadows — purple tint */
+  --shadow-sm: 0 1px 3px rgba(30, 42, 106, 0.06), 0 1px 2px rgba(30, 42, 106, 0.04);
+  --shadow-md: 0 4px 14px rgba(30, 42, 106, 0.10);
+  --shadow-lg: 0 20px 60px rgba(30, 42, 106, 0.22);
+
+  /* Radii */
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-lg: 16px;
+
+  /* Typography */
+  --font-display: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+}
+
+/* ---------- Base typography ---------- */
+
+html, body {
+  font-family: var(--font-body);
+  color: var(--text);
+  background: var(--bg);
+}
+
+h1, h2, h3,
+.hero-couple,
+.hero-days,
+.stat-value,
+.brand,
+.nextup-name,
+.contact-name,
+.section-name {
+  font-family: var(--font-display);
+  font-feature-settings: "ss01";
+}
+
+h1 { font-weight: 600; letter-spacing: -0.02em; }
+h2 { font-weight: 600; letter-spacing: -0.015em; }
+h3 { font-weight: 600; }
+
+/* ---------- Sidebar — dark with gradient ---------- */
+
+.sidebar {
+  background: var(--gradient);
+  border-right: none;
+  color: #fff;
+}
+
+.brand {
+  color: #fff;
+  opacity: 0.95;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.sidebar nav a {
+  color: rgba(255, 255, 255, 0.78);
+}
+.sidebar nav a:hover {
+  background: rgba(255, 255, 255, 0.10);
+  color: #fff;
+  text-decoration: none;
+}
+.sidebar nav a.active {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.sidebar nav a.external-link {
+  color: rgba(255, 255, 255, 0.55);
+}
+.sidebar nav a.external-link:hover {
+  color: #fff;
+}
+
+.sidebar-search input[type="search"] {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.sidebar-search input[type="search"]::placeholder {
+  color: rgba(255, 255, 255, 0.55);
+}
+.sidebar-search input[type="search"]:focus {
+  background: rgba(255, 255, 255, 0.20);
+  border-color: var(--accent);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.sidebar-footer {
+  border-top-color: rgba(255, 255, 255, 0.12);
+}
+.status {
+  color: rgba(255, 255, 255, 0.65);
+}
+.sidebar .btn-ghost {
+  color: rgba(255, 255, 255, 0.85);
+}
+.sidebar .btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+
+/* ---------- Primary buttons → gradient ---------- */
+
+.btn-primary {
+  background: var(--gradient);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(30, 42, 106, 0.22);
+  transition: transform 0.12s, box-shadow 0.15s, background 0.15s;
+}
+.btn-primary:hover {
+  background: var(--gradient-hover);
+  border-color: transparent;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(30, 42, 106, 0.30);
+}
+.btn-primary:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(30, 42, 106, 0.24);
+}
+
+/* Default .btn gets a soft lavender hover for consistency */
+.btn:hover { background: var(--surface-alt); }
+
+/* ---------- Hero → gradient ---------- */
+
+.hero {
+  background: var(--gradient);
+  color: #fff;
+  box-shadow: var(--shadow-md);
+}
+.hero-couple { color: #fff; }
+.hero-date,
+.hero-venue { color: rgba(255, 255, 255, 0.82); }
+.hero-hashtag { color: var(--accent); font-weight: 500; }
+.hero-days { color: #fff; font-weight: 700; }
+.hero-days-label { color: rgba(255, 255, 255, 0.72); }
+
+/* ---------- Progress bars → gradient ---------- */
+
+.progress-fill {
+  background: var(--gradient);
+}
+
+/* ---------- Chips / RSVP — active uses gradient ---------- */
+
+.chip.on,
+.rsvp-chip.on {
+  background: var(--gradient);
+  border-color: transparent;
+  color: #fff;
+  font-weight: 500;
+}
+.chip:hover,
+.rsvp-chip:hover {
+  background: var(--surface-alt);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ---------- Row checkbox → gradient when on ---------- */
+
+.ql-check.on {
+  background: var(--gradient);
+  border-color: transparent;
+}
+
+/* ---------- Timeline date badge ---------- */
+
+.tl-date-month { color: var(--grad-to); }
+
+/* ---------- Section card — gradient top band ---------- */
+
+.section-card {
+  position: relative;
+  overflow: hidden;
+}
+.section-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--gradient);
+  opacity: 0.9;
+}
+
+/* ---------- Stat values — solid navy for readability ---------- */
+
+.stat-value {
+  color: var(--text);
+  font-weight: 700;
+}
+
+/* ---------- Section headers inside lists ---------- */
+
+.section-header {
+  background: var(--gradient-soft);
+}
+.section-header-name {
+  color: var(--grad-to);
+}
+
+/* ---------- Row hover — lavender tint ---------- */
+
+.ql-row-main:hover {
+  background: var(--gradient-soft);
+}
+.ql-row.expanded > .ql-row-main {
+  background: var(--gradient-soft);
+}
+
+/* ---------- Toast → gradient ---------- */
+
+.toast {
+  background: var(--gradient);
+  color: #fff;
+  box-shadow: 0 6px 20px rgba(30, 42, 106, 0.30);
+}
+
+/* ---------- Focus rings — gold ---------- */
+
+.ql-controls input[type="search"]:focus,
+.meta-editor input:focus,
+.field input:focus,
+.field select:focus,
+.field textarea:focus,
+.ql-quick-add .field-compact input:focus,
+.ql-quick-add .field-compact select:focus,
+.ql-quick-add .field-compact textarea:focus,
+.vendor-stage-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+/* ---------- Next-up card hover tint ---------- */
+
+.nextup-card:hover {
+  border-color: var(--grad-to);
+  box-shadow: 0 6px 20px rgba(91, 44, 140, 0.14);
+}
+
+/* ---------- Meta group name (Overview) ---------- */
+
+.meta-group-name {
+  color: var(--grad-to);
+}
+
+/* ---------- Contact role (Wedding Day) ---------- */
+
+.contact-role {
+  color: var(--accent);
+}
+
+/* ---------- Vendor action buttons ---------- */
+
+.vendor-action:hover {
+  background: var(--gradient-soft);
+  border-color: var(--grad-to);
+  color: var(--grad-to);
+}
+
+/* ---------- Mobile — sidebar still gradient ---------- */
+
+@media (max-width: 720px) {
+  .sidebar {
+    background: var(--gradient);
+    border-bottom: none;
+  }
+  .sidebar nav a.active {
+    box-shadow: inset 0 -2px 0 var(--accent);
+  }
+  .sidebar-search input[type="search"] {
+    background: rgba(255, 255, 255, 0.16);
+  }
+}
+
+/* ---------- Print — flat and printable ---------- */
+
+@media print {
+  .sidebar,
+  .sidebar-search {
+    background: #fff !important;
+    color: var(--text) !important;
+  }
+  .view-subtitle { color: var(--text); }
+}
