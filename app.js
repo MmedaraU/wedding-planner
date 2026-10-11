@@ -392,9 +392,42 @@ function readForm(root) {
 
 function renderInlineEditor(row, schema) {
   const cols = schema.columns || [];
-  const fields = (schema.fields && schema.fields.length)
+
+  // Columns the app is allowed to write back.
+  //
+  // Priority order:
+  //   1. schema.fields   — explicit JSON array from _app_config column H
+  //   2. schema.quickAdd — comma-separated list from _app_config column O
+  //   3. all columns     — legacy fallback (no whitelist declared)
+  //
+  // Anything not in the whitelist is hidden from the editor, so its cell
+  // in the sheet is never touched by a Save.
+  let editableNames = null;   // null = no whitelist, show everything
+  if (Array.isArray(schema.fields) && schema.fields.length > 0) {
+    editableNames = schema.fields.map(f => String(f.name).toLowerCase());
+  } else if (Array.isArray(schema.quickAdd) && schema.quickAdd.length > 0) {
+    editableNames = schema.quickAdd.map(n => String(n).toLowerCase());
+  }
+
+  // Build the full field list (as before), then optionally filter it.
+  const allFields = (schema.fields && schema.fields.length)
     ? schema.fields
     : cols.map(c => ({ name: c, label: c, type: guessType(c) }));
+
+  // Date-typed columns are dangerous to edit inline: their sheet cells
+  // are often formulas (e.g. Planning Schedule DUE DATE references
+  // 'General Information'!D15). The API returns computed values, so
+  // a Save writes the computed string back and destroys the formula.
+  // Exclude them from the editor regardless of the whitelist.
+  const isDateField = f => {
+    if (f.type === 'date') return true;
+    return /\b(date|due|when|deadline)\b/i.test(f.name || '');
+  };
+
+  const fields = allFields
+    .filter(f => !isDateField(f))
+    .filter(f => !editableNames || editableNames.includes(String(f.name).toLowerCase()));
+
   return `<div class="ql-editor">
     ${fields.map(f => renderField(f, row[f.name])).join('')}
     <div class="ql-editor-actions">
