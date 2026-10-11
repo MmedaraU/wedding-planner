@@ -1133,7 +1133,40 @@ async function toggleCheck(schema, roles, id, rowEl) {
 async function saveInline(schema, id, rowEl) {
   const editor = rowEl.querySelector('.ql-editor'); if (!editor) return;
   const data = readForm(editor);
-  const res = await apiWrite('update', schema.sheet, data, id, rowEl.dataset.row);
+
+  // Look up the row as it was rendered, from the cache the view loaded.
+  const original = (state.data[schema.sheet] || [])
+    .find(r => String(rowId(r, schema)) === String(id));
+
+  // Normalise for comparison so we don't flag false positives:
+  //   - null / undefined / '' all collapse to ''
+  //   - "2027-12-12T00:00:00.000Z" and "2027-12-12" compare equal
+  //   - numbers compare as their string forms
+  const norm = v => {
+    if (v == null) return '';
+    const s = String(v).trim();
+    if (!s) return '';
+    const iso = s.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (iso) return iso[1];
+    return s;
+  };
+
+  // Build a payload containing only fields whose value actually differs
+  // from the row's original value. Untouched fields — including
+  // formula-driven date cells — are omitted entirely.
+  const changed = {};
+  Object.entries(data).forEach(([k, v]) => {
+    const orig = original ? original[k] : undefined;
+    if (norm(v) !== norm(orig)) changed[k] = v;
+  });
+
+  if (Object.keys(changed).length === 0) {
+    state.expanded = null;
+    toast('No changes');
+    return render();
+  }
+
+  const res = await apiWrite('update', schema.sheet, changed, id, rowEl.dataset.row);
   if (res.error) return toast('Save failed: ' + res.error);
   state.expanded = null; toast('Saved'); render();
 }
