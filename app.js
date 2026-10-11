@@ -2066,7 +2066,49 @@ function initMenuToggle() {
       backdrop.classList.remove('show');
     }
   });
+} function initMenuToggle() {
+  const btn = $('#menu-toggle');
+  const sidebar = $('.sidebar');
+  const backdrop = $('#menu-backdrop');
+  const app = $('#app');
+  if (!btn || !sidebar || !backdrop || !app) return;
+
+  // Are we in the mobile drawer layout? (Must match the CSS breakpoint.)
+  const isMobile = () => window.matchMedia('(max-width: 900px)').matches;
+
+  // Restore persisted desktop collapse preference on boot.
+  if (!isMobile() && localStorage.getItem('sidebarCollapsed') === '1') {
+    app.classList.add('sidebar-collapsed');
+  }
+
+  btn.onclick = () => {
+    if (isMobile()) {
+      // Mobile: slide-in drawer, unchanged from before.
+      sidebar.classList.toggle('open');
+      backdrop.classList.toggle('show');
+    } else {
+      // Desktop: collapse / expand the grid column, persist the choice.
+      const collapsed = app.classList.toggle('sidebar-collapsed');
+      localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0');
+    }
+  };
+
+  backdrop.onclick = () => {
+    sidebar.classList.remove('open');
+    backdrop.classList.remove('show');
+  };
+
+  // Close the mobile drawer when a nav link is tapped.
+  // (No-op on desktop, where the sidebar isn't a drawer.)
+  document.addEventListener('click', (e) => {
+    if (!isMobile()) return;
+    if (e.target.closest('#nav a') || e.target.closest('.sidebar a')) {
+      sidebar.classList.remove('open');
+      backdrop.classList.remove('show');
+    }
+  });
 }
+
 // ============================================================
 // Boot
 // ============================================================

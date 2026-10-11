@@ -27,6 +27,7 @@
   --radius: 10px;
   --radius-sm: 6px;
   --radius-lg: 14px;
+  --sidebar-width: 240px;
 }
 
 /* ============================================================
@@ -57,7 +58,32 @@ a:hover { text-decoration: underline; }
    MOBILE MENU TOGGLE
    ============================================================ */
 
-.menu-toggle { display: none; }
+.menu-toggle {
+  display: none;
+  position: fixed;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  background: var(--gradient);
+  color: #fff;
+  border: none;
+  -webkit-border-radius: 10px;
+  -moz-border-radius: 10px;
+  -ms-border-radius: 10px;
+  -o-border-radius: 10px;
+  border-radius: 10px;
+  font-size: 20px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(30, 42, 106, 0.25);
+  z-index: 100;
+  -webkit-transition: left 0.25s ease;
+  -moz-transition: left 0.25s ease;
+  -ms-transition: left 0.25s ease;
+  -o-transition: left 0.25s ease;
+  transition: left 0.25s ease;
+}
+
 .menu-backdrop { display: none; }
 
 /* ============================================================
@@ -66,16 +92,48 @@ a:hover { text-decoration: underline; }
 
 #app {
   display: grid;
-  grid-template-columns: 240px 1fr;
+  grid-template-columns: var(--sidebar-width) 1fr;
   min-height: 100vh;
+  -webkit-transition: grid-template-columns 0.25s ease;
+  -moz-transition: grid-template-columns 0.25s ease;
+  -ms-transition: grid-template-columns 0.25s ease;
+  -o-transition: grid-template-columns 0.25s ease;
+  transition: grid-template-columns 0.25s ease;
 }
 
 @media (min-width: 900px) and (max-width: 1200px) {
-  #app { grid-template-columns: 200px 1fr; }
+  :root { --sidebar-width: 200px; }
 }
 
 @media (min-width: 1600px) {
-  #app { grid-template-columns: 280px 1fr; }
+  :root { --sidebar-width: 280px; }
+}
+
+/* Collapsed sidebar — desktop only */
+@media (min-width: 901px) {
+  #app.sidebar-collapsed {
+    grid-template-columns: 0 1fr;
+  }
+  #app.sidebar-collapsed .sidebar {
+    overflow: hidden;
+    padding-left: 0;
+    padding-right: 0;
+    border-right: none;
+    pointer-events: none;
+  }
+}
+
+/* Desktop toggle */
+@media (min-width: 901px) {
+  .menu-toggle {
+    display: flex;
+    top: 12px;
+    left: calc(var(--sidebar-width) - 52px);
+  }
+
+  #app.sidebar-collapsed .menu-toggle {
+    left: 12px;
+  }
 }
 
 .sidebar {
@@ -2152,9 +2210,22 @@ td.empty {
 
 .today-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: 1fr;
   gap: 14px;
   margin-bottom: 24px;
+}
+
+/* Two columns on desktop only — mobile stays at 1 */
+@media (min-width: 901px) {
+  .today-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .today-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .today-card {
