@@ -79,23 +79,79 @@ async function apiGetSchema() {
   const url = `${CONFIG.apiUrl}?secret=${encodeURIComponent(CONFIG.secret)}&schema=true`;
   return (await fetch(url)).json();
 }
-async function apiGetOverview() {
+async function apiGetOverview(force) {
+  const now = Date.now();
+  state.dataTime = state.dataTime || {};
+  if (!force && state.data.__overview && (now - state.dataTime['__overview']) < CACHE_TTL_MS) {
+    return state.data.__overview;
+  }
   const url = `${CONFIG.apiUrl}?secret=${encodeURIComponent(CONFIG.secret)}&overview=true`;
-  return (await fetch(url)).json();
+  let res;
+  try {
+    res = await (await fetch(url)).json();
+  } catch (err) {
+    return { error: 'Network error: ' + err.message };
+  }
+  if (!res.error) {
+    state.data.__overview = res;
+    state.dataTime['__overview'] = now;
+  }
+  return res;
 }
-async function apiGetRows(sheetName) {
+const CACHE_TTL_MS = 5 * 60 * 1000;
+
+async function apiGetRows(sheetName, force) {
+  const now = Date.now();
+  state.dataTime = state.dataTime || {};
+  const cached = state.data[sheetName];
+  const cachedAt = state.dataTime[sheetName] || 0;
+
+  if (!force && cached && (now - cachedAt) < CACHE_TTL_MS) {
+    return { rows: cached };
+  }
+
   const url = `${CONFIG.apiUrl}?secret=${encodeURIComponent(CONFIG.secret)}&sheet=${encodeURIComponent(sheetName)}`;
-  return (await fetch(url)).json();
+  let res;
+  try {
+    res = await (await fetch(url)).json();
+  } catch (err) {
+    return { error: 'Network error: ' + err.message };
+  }
+  if (!res.error) {
+    state.data[sheetName] = res.rows || [];
+    state.dataTime[sheetName] = now;
+  }
+  return res;
 }
 async function apiWrite(action, sheetName, data, id, row) {
   const body = JSON.stringify({
     secret: CONFIG.secret, sheet: sheetName, action, data, id, row
   });
-  return (await fetch(CONFIG.apiUrl, {
+  const res = await (await fetch(CONFIG.apiUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
     body
   })).json();
+  if (!res.error) {
+    // Always drop the cache for the sheet that was written to
+    delete state.data[sheetName];
+    delete state.dataTime?.[sheetName];
+
+    // Anything that feeds the Overview payload must also blow away the
+    // cached __overview, otherwise the UI keeps showing stale data for
+    // up to CACHE_TTL_MS (5 minutes).
+    const affectsOverview =
+      action === 'updateTeam' ||
+      action === 'deleteTeam' ||
+      action === 'createTeam' ||
+      sheetName === '_app_meta';
+
+    if (affectsOverview) {
+      delete state.data.__overview;
+      delete state.dataTime?.['__overview'];
+    }
+  }
+  return res;
 }
 
 // ============================================================
@@ -169,7 +225,14 @@ function debounce(fn, ms) {
 }
 function rowId(row, schema) {
   const idField = (schema.columns || [])[schema.idColumn - 1];
-  if (idField && row[idField] !== undefined && row[idField] !== '') return row[idField];
+  if (idField) {
+    const val = row[idField];
+    // Skip booleans and empty values — use physical row instead
+    if (val !== undefined && val !== '' && val !== null
+      && val !== false && val !== true) {
+      return val;
+    }
+  }
   return row._row;
 }
 function pick(row, ...keys) {
@@ -511,6 +574,78 @@ function bindOverviewMeta() {
 // ============================================================
 // VIEW: Team
 // ============================================================
+function openTeamEditor(team) {
+  const isEdit = !!team;
+  const modal = document.createElement('div');
+  modal.className = 'modal';
+  modal.innerHTML = `
+    <div class="modal-content">
+      <h2>${isEdit ? 'Edit team member' : 'Add team member'}</h2>
+      <form id="team-form">
+        <div class="field">
+          <label>Role</label>
+          <input name="role" value="${escapeHtml(team?.role || '')}">
+        </div>
+        <div class="field">
+          <label>Name</label>
+          <input name="contact" value="${escapeHtml(team?.contact || '')}">
+        </div>
+        <div class="field">
+          <label>Phone</label>
+          <input name="phone" value="${escapeHtml(team?.phone || '')}">
+        </div>
+        <div class="field">
+          <label>Events</label>
+          <input name="events" value="${escapeHtml(team?.events || '')}">
+        </div>
+        <div class="field">
+          <label>Quantity (for food)</label>
+          <input name="qty" type="number" value="${escapeHtml(team?.qty || '')}">
+        </div>
+        <div class="field">
+          <label>Description</label>
+          <textarea name="description">${escapeHtml(team?.description || '')}</textarea>
+        </div>
+        <div class="modal-actions">
+          ${isEdit ? '<button type="button" class="btn btn-danger" data-action="delete">Delete</button>' : ''}
+          <button type="button" class="btn" data-action="cancel">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const form = modal.querySelector('#team-form');
+  form.querySelector('input')?.focus();
+
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const data = {};
+    new FormData(form).forEach((v, k) => { data[k] = String(v).trim(); });
+    const action = isEdit ? 'updateTeam' : 'createTeam';
+    const res = await apiWrite(action, 'General Information', data, null, team?._row);
+    if (res.error) return toast('Save failed: ' + res.error);
+    modal.remove();
+    toast(isEdit ? 'Saved' : 'Added');
+    renderTeamPage();
+  };
+
+  modal.querySelector('[data-action="cancel"]').onclick = () => modal.remove();
+  if (isEdit) {
+    modal.querySelector('[data-action="delete"]').onclick = async () => {
+      if (!confirm('Delete this team member?')) return;
+      const res = await apiWrite('deleteTeam', 'General Information', null, null, team._row);
+      if (res.error) return toast('Delete failed: ' + res.error);
+      modal.remove();
+      toast('Deleted');
+      renderTeamPage();
+    };
+  }
+
+  modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
+}
+
 async function renderTeamPage() {
   setStatus('Loading team…');
   try {
@@ -528,7 +663,10 @@ async function renderTeamPage() {
     $('#view').innerHTML = `
       <div class="toolbar">
         <h1>Team</h1>
-        <span class="pill">${team.length} ${team.length === 1 ? 'role' : 'roles'} · ${withPhone} with number</span>
+        <div class="toolbar-actions">
+          <span class="pill">${team.length} ${team.length === 1 ? 'role' : 'roles'} · ${withPhone} with number</span>
+          <button class="btn btn-primary" id="team-add">+ Add</button>
+        </div>
       </div>
       <div class="ql-controls">
         <input type="search" id="team-search" placeholder="Search team…" value="${escapeHtml(state.search._team || '')}">
@@ -541,7 +679,8 @@ async function renderTeamPage() {
           const tel = telLink(display);
           const wa = waLink(display);
           const hasPhone = !!display;
-          return `<div class="contact-card team-card ${hasPhone ? '' : 'no-phone'}">
+          return `<div class="contact-card team-card ${hasPhone ? '' : 'no-phone'}"
+                           data-row="${t._row}" data-role="${escapeHtml(t.role)}">
                 <div class="contact-role">${escapeHtml(t.role)}</div>
                 ${t.contact ? `<div class="contact-name">${escapeHtml(t.contact)}</div>` : ''}
                 ${hasPhone ? `<div class="contact-phone">${escapeHtml(display)}</div>` : ''}
@@ -550,10 +689,13 @@ async function renderTeamPage() {
                   ${t.qty ? `<span class="pill">🍽 ${escapeHtml(t.qty)}</span>` : ''}
                 </div>` : ''}
                 ${t.description ? `<div class="team-desc">${escapeHtml(t.description)}</div>` : ''}
-                ${hasPhone ? `<div class="contact-actions">
-                  <a class="btn btn-ghost" href="${escapeHtml(tel)}">📞 Call</a>
-                  <a class="btn btn-ghost" href="${escapeHtml(wa)}" target="_blank" rel="noopener">💬 WhatsApp</a>
-                </div>` : ''}
+                <div class="team-actions-row">
+                  ${hasPhone ? `
+                    <a class="btn btn-ghost" href="${escapeHtml(tel)}">📞</a>
+                    <a class="btn btn-ghost" href="${escapeHtml(wa)}" target="_blank" rel="noopener">💬</a>
+                  ` : ''}
+                  <button type="button" class="btn btn-ghost team-edit" data-row="${t._row}">✎ Edit</button>
+                </div>
               </div>`;
         }).join('')}
           </div>`}
@@ -564,6 +706,20 @@ async function renderTeamPage() {
       state.search._team = search.value;
       renderTeamPage();
     }, 200);
+
+    // "+ Add" — .onclick overwrites any prior handler, so repeated
+    // renders don't stack.
+    $('#team-add').onclick = () => openTeamEditor(null);
+
+    // "✎ Edit" — delegate on #view. Using .onclick (not addEventListener)
+    // is essential: addEventListener would stack a new handler on every
+    // render, eventually opening N modals for a single click.
+    $('#view').onclick = (e) => {
+      const editBtn = e.target.closest('.team-edit');
+      if (!editBtn) return;
+      const row = team.find(t => t._row === Number(editBtn.dataset.row));
+      if (row) openTeamEditor(row);
+    };
 
     setStatus('Synced ' + new Date().toLocaleTimeString());
   } catch (err) {
@@ -785,6 +941,27 @@ async function renderTimeline(schema) {
     `;
 
     bindTimelineEvents(schema, { doneCol, dateCol, phaseCol, hasDates });
+
+    // "Next up" hero cards — tap to expand the matching row further down
+    // the page. Each card carries data-id (rowId) and data-row (physical
+    // sheet row) rendered by renderNextUpCard().
+    $$('.nextup-card').forEach(card => {
+      card.onclick = async () => {
+        const id = card.dataset.id;
+        if (!id) return;
+        state.expanded = schema.sheet + ':' + id;
+
+        // Await render() so the DOM has been updated by the time we
+        // query for the newly expanded row below.
+        await render();
+
+        const expanded = document.querySelector('.ql-row.expanded');
+        if (expanded && expanded.scrollIntoView) {
+          expanded.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      };
+    });
+
     setStatus('Synced ' + new Date().toLocaleTimeString());
   } catch (err) {
     setStatus('Failed'); toast(err.message);
@@ -1161,23 +1338,45 @@ async function renderBudget(schema) {
             </div>
             ${renderProgress(used, '')}
             ${over ? `<div class="over-badge">Over by ${money(sec.actual - sec.budgeted)}</div>` : ''}
-            <div class="section-items">
-              ${sec.items.slice(0, 5).map(it => renderBudgetItem(it, rows, schema)).join('')}
-              ${sec.items.length > 5 ? `<div class="more">+ ${sec.items.length - 5} more</div>` : ''}
-            </div>
+<div class="section-items">
+  ${sec.items.map((it, i) => {
+        const hiddenClass = i >= 5 ? ' hidden-until-expand' : '';
+        return renderBudgetItem(it, rows, schema).replace(
+          'class="budget-item',
+          `class="budget-item${hiddenClass}`
+        );
+      }).join('')}
+  ${sec.items.length > 5 ? `<div class="more more-expand">+ ${sec.items.length - 5} more</div>` : ''}
+</div>
           </div>`;
     }).join('')}
       </div>`;
 
+    // Resolve real column names once — reused by the quick-add form below.
+    const cols = schema.columns || [];
+    const findCol = (...cands) => {
+      for (const c of cands) {
+        const hit = cols.find(x => String(x).toLowerCase() === c.toLowerCase());
+        if (hit) return hit;
+      }
+      return '';
+    };
+    const itemColName = findCol('item', 'task');
+    const sectionColName = findCol('section');
+    const budgetedColName = findCol('budgeted', 'budgeted cost');
+    const actualColName = findCol('actual', 'actual cost');
+
     document.getElementById('bd-add').onclick = () => {
       const strip = document.getElementById('bd-add-strip');
       if (strip.firstChild) { strip.innerHTML = ''; return; }
+
       const fields = [
-        { name: 'item', label: 'Item' },
-        { name: 'section', label: 'Section' },
-        { name: 'budgeted', label: 'Budgeted', type: 'number' },
-        { name: 'actual', label: 'Actual', type: 'number' }
-      ];
+        itemColName && { name: itemColName, label: 'Item' },
+        sectionColName && { name: sectionColName, label: 'Section' },
+        budgetedColName && { name: budgetedColName, label: 'Budgeted', type: 'number' },
+        actualColName && { name: actualColName, label: 'Actual', type: 'number' }
+      ].filter(Boolean);
+
       strip.innerHTML = `<div class="ql-quick-add" id="bd-quick-add">
         ${fields.map(f => renderField(f, '', true)).join('')}
         <div class="ql-quick-actions">
@@ -1185,6 +1384,7 @@ async function renderBudget(schema) {
           <button type="button" class="btn btn-primary" data-action="create">Add</button>
         </div>
       </div>`;
+
       const form = document.getElementById('bd-quick-add');
       form.querySelector('input')?.focus();
       form.onclick = async (e) => {
@@ -1192,7 +1392,7 @@ async function renderBudget(schema) {
         if (action === 'cancel') { strip.innerHTML = ''; return; }
         if (action !== 'create') return;
         const data = readForm(form);
-        if (!data.item) return toast('Item is required');
+        if (itemColName && !data[itemColName]) return toast('Item is required');
         const res = await apiWrite('create', schema.sheet, data);
         if (res.error) return toast('Add failed: ' + res.error);
         toast('Added'); strip.innerHTML = ''; render();
@@ -1205,13 +1405,25 @@ async function renderBudget(schema) {
         if (!row) return;
         state.expanded = schema.sheet + ':' + rowId(row, schema);
         const card = el.closest('.section-card');
-        const oldHtml = card.querySelector('.section-items').innerHTML;
         card.querySelector('.section-items').innerHTML =
           renderBudgetEditor(row, schema) +
           `<div class="more" data-role="close" style="cursor:pointer">Close</div>`;
         card.querySelector('[data-role="close"]').onclick = () => render();
         bindBudgetEditor(schema, row, card);
       };
+    });
+
+    $$('.section-card').forEach(card => {
+      const more = card.querySelector('.more-expand');
+      if (more) {
+        more.onclick = (e) => {
+          e.stopPropagation();
+          card.classList.toggle('expanded');
+          more.textContent = card.classList.contains('expanded')
+            ? 'Show less'
+            : `+ ${card.querySelectorAll('.hidden-until-expand').length} more`;
+        };
+      }
     });
 
     setStatus('Synced ' + new Date().toLocaleTimeString());
@@ -1236,18 +1448,29 @@ function renderBudgetItem(row, allRows, schema) {
 }
 
 function renderBudgetEditor(row, schema) {
+  const cols = schema.columns || [];
+
+  // Case-insensitive lookup across the schema's real column names,
+  // so this works for both budget_flat (lowercase) and Bridal List
+  // (Title Case). Returns '' if none of the candidates exist.
+  const find = (...cands) => {
+    for (const c of cands) {
+      const hit = cols.find(x => String(x).toLowerCase() === c.toLowerCase());
+      if (hit) return hit;
+    }
+    return '';
+  };
+
   const fields = [
-    { name: 'item', label: 'Item' },
-    { name: 'section', label: 'Section' },
-    { name: 'budgeted', label: 'Budgeted', type: 'number' },
-    { name: 'actual', label: 'Actual', type: 'number' },
-    { name: 'deposit', label: 'Paid', type: 'number' }
-  ];
+    { name: find('item', 'task'), label: 'Item' },
+    { name: find('section'), label: 'Section' },
+    { name: find('budgeted', 'budgeted cost'), label: 'Budgeted', type: 'number' },
+    { name: find('actual', 'actual cost'), label: 'Actual', type: 'number' },
+    { name: find('deposit', 'deposit made', 'paid'), label: 'Paid', type: 'number' }
+  ].filter(f => f.name);   // drop any column that doesn't exist on this sheet
+
   return `<div class="ql-editor" data-row="${row._row}">
-    ${fields.map(f => {
-    const val = pick(row, f.name, f.name.charAt(0).toUpperCase() + f.name.slice(1));
-    return renderField(f, val);
-  }).join('')}
+    ${fields.map(f => renderField(f, row[f.name] ?? '')).join('')}
     <div class="ql-editor-actions">
       <button type="button" class="btn btn-danger" data-action="delete">Delete</button>
       <button type="button" class="btn btn-primary" data-action="save">Save</button>
@@ -1304,10 +1527,19 @@ async function renderGuests(schema) {
 
     const categories = catCol ? Array.from(new Set(rows.map(r => r[catCol]).filter(Boolean))).sort() : [];
     const activeCat = state.filter[schema.sheet] || 'All';
+    const respFilters = ['All', 'Coming', 'Pending', 'Not Coming'];
+    const activeResp = state.filter[schema.sheet + '_resp'] || 'All';
     const q = (state.search[schema.sheet] || '').toLowerCase();
 
     let filtered = rows;
     if (activeCat !== 'All' && catCol) filtered = filtered.filter(r => r[catCol] === activeCat);
+    if (activeResp !== 'All') {
+      filtered = filtered.filter(r => {
+        const v = respCol ? r[respCol] : '';
+        if (activeResp === 'Pending') return !v || v === 'Pending';
+        return v === activeResp;
+      });
+    }
     if (q) filtered = filtered.filter(r => cols.some(c => String(r[c] ?? '').toLowerCase().includes(q)));
 
     $('#view').innerHTML = `
@@ -1324,6 +1556,11 @@ async function renderGuests(schema) {
       ${renderProgress(total ? (coming / total) * 100 : 0, 'Confirmed')}
       <div class="ql-controls">
         <input type="search" id="g-search" placeholder="Search guests…" value="${escapeHtml(state.search[schema.sheet] || '')}">
+        <div class="chips">
+          ${respFilters.map(f =>
+      `<button class="chip chip-resp ${activeResp === f ? 'on' : ''}" data-resp-filter="${escapeHtml(f)}">${escapeHtml(f)}</button>`
+    ).join('')}
+        </div>
       </div>
       ${categories.length ? `<div class="chips">
         <button class="chip ${activeCat === 'All' ? 'on' : ''}" data-cat="All">All</button>
@@ -1338,14 +1575,30 @@ async function renderGuests(schema) {
 
     const search = $('#g-search');
     if (search) search.oninput = debounce(() => { state.search[schema.sheet] = search.value; renderGuests(schema); }, 200);
-    $$('.chip').forEach(chip => {
-      chip.onclick = () => { state.filter[schema.sheet] = chip.dataset.cat; renderGuests(schema); };
+
+    // Category chips only — must NOT match response chips, because those
+    // carry class="chip chip-resp" and are wired up separately below.
+    $$('.chip[data-cat]').forEach(chip => {
+      chip.onclick = () => {
+        state.filter[schema.sheet] = chip.dataset.cat;
+        renderGuests(schema);
+      };
     });
+
+    $$('.chip-resp').forEach(chip => {
+      chip.onclick = () => {
+        state.filter[schema.sheet + '_resp'] = chip.dataset.respFilter;
+        renderGuests(schema);
+      };
+    });
+
     $('#g-add').onclick = () => showQuickAdd(schema, roles, $('#g-add-strip'));
 
     $('#g-list').onclick = async (e) => {
       const rowEl = e.target.closest('.ql-row'); if (!rowEl) return;
       const id = rowEl.dataset.id;
+
+      // RSVP buttons (✓ / ✕) and the expanded RSVP chips
       const rsvp = e.target.closest('[data-rsvp]');
       if (rsvp && respCol) {
         const value = rsvp.dataset.rsvp;
@@ -1356,6 +1609,7 @@ async function renderGuests(schema) {
         if (res.error) return toast('Save failed: ' + res.error);
         toast('RSVP → ' + value); return render();
       }
+
       const action = e.target.closest('[data-action]')?.dataset.action;
       if (action === 'expand') return toggleExpand(schema, id);
       if (action === 'cancel') { state.expanded = null; return render(); }
@@ -1382,7 +1636,11 @@ function renderGuestRow(row, schema, { nameCol, catCol, respCol, hotelCol }) {
   const category = catCol ? row[catCol] : '';
   const responseClass = response === 'Coming' ? 'pill-green' : response === 'Not Coming' ? 'pill-red' : '';
   const showCategory = catCol && (state.filter[schema.sheet] || 'All') === 'All';
-  return `<div class="ql-row ${expanded ? 'expanded' : ''}" data-id="${escapeHtml(String(id))}" data-row="${row._row}">
+  return `<div class="ql-row guest-row
+    ${response === 'Coming' ? 'guest-coming' : ''}
+    ${response === 'Not Coming' ? 'guest-not-coming' : ''}
+    ${expanded ? 'expanded' : ''}"
+    data-id="${escapeHtml(String(id))}" data-row="${row._row}">
     <div class="ql-row-main">
       <div class="ql-row-info" data-action="expand">
         <div class="ql-row-name">${escapeHtml(name)}</div>
@@ -1392,6 +1650,12 @@ function renderGuestRow(row, schema, { nameCol, catCol, respCol, hotelCol }) {
           ${hotel === 'Hotel' ? `<span class="pill pill-amber">Hotel</span>` : ''}
         </div>
       </div>
+      ${respCol ? `<div class="guest-actions">
+        <button type="button" class="guest-btn yes ${response === 'Coming' ? 'active' : ''}"
+                data-rsvp="Coming" title="Coming">✓</button>
+        <button type="button" class="guest-btn no ${response === 'Not Coming' ? 'active' : ''}"
+                data-rsvp="Not Coming" title="Not coming">✕</button>
+      </div>` : ''}
       <button type="button" class="ql-more" data-action="expand">⋯</button>
     </div>
     ${expanded ? `
@@ -1642,70 +1906,6 @@ function renderVendorRow(v) {
   </div>`;
 }
 
-// ============================================================
-// VIEW: Wedding Day (from _app_meta)
-// ============================================================
-
-async function renderWeddingDay() {
-  setStatus('Loading wedding day…');
-  try {
-    const res = await apiGetRows('_app_meta');
-    if (res.error) throw new Error(res.error);
-    const rows = res.rows || [];
-
-    const groups = {};
-    rows.forEach(r => {
-      if (!r.key) return;
-      const g = r.group || 'Other';
-      (groups[g] = groups[g] || []).push(r);
-    });
-
-    const team = groups.Team || [];
-    const menu = groups.Menu || [];
-    const music = groups.Music || [];
-    const venues = ['Wedding Venue', 'TM Venue', 'Reception Venue', 'Friends Night', 'Hotel']
-      .flatMap(g => (groups[g] || []).map(r => ({ ...r, _group: g })));
-
-
-
-    $('#view').innerHTML = `
-      <div class="toolbar">
-        <h1>Wedding Day</h1>
-        <button class="btn" onclick="window.print()">🖨 Print</button>
-      </div>
-
-
-      
-
-      ${venues.length ? `
-        <h2>Venues</h2>
-        <div class="info-table">
-          ${venues.map(r => `<div class="venue-row">
-            <div class="venue-group">${escapeHtml(r._group)}</div>
-            <div class="venue-label">${escapeHtml(r.label)}</div>
-            <div class="venue-value">${escapeHtml(String(r.value || '—'))}</div>
-          </div>`).join('')}
-        </div>
-      ` : ''}
-
-      ${music.length ? `
-        <h2>Music</h2>
-        <table class="info-table"><tbody>
-          ${music.map(r => `<tr><td class="info-label">${escapeHtml(r.label)}</td><td>${escapeHtml(String(r.value || '—'))}</td></tr>`).join('')}
-        </tbody></table>
-      ` : ''}
-
-      ${menu.length ? `
-        <h2>Menu</h2>
-        <table class="info-table"><tbody>
-          ${menu.map(r => `<tr><td class="info-label">${escapeHtml(r.label)}</td><td>${escapeHtml(String(r.value || '—'))}</td></tr>`).join('')}
-        </tbody></table>
-      ` : ''}
-    `;
-
-    setStatus('Synced ' + new Date().toLocaleTimeString());
-  } catch (err) { setStatus('Failed'); toast(err.message); }
-}
 
 // ============================================================
 // VIEW: Global search
@@ -1846,6 +2046,27 @@ function bindGlobalSearch() {
   }, 250);
 }
 
+function initMenuToggle() {
+  const btn = $('#menu-toggle');
+  const sidebar = $('.sidebar');
+  const backdrop = $('#menu-backdrop');
+  if (!btn || !sidebar || !backdrop) return;
+
+  btn.onclick = () => {
+    sidebar.classList.toggle('open');
+    backdrop.classList.toggle('show');
+  };
+  backdrop.onclick = () => {
+    sidebar.classList.remove('open');
+    backdrop.classList.remove('show');
+  };
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('#nav a') || e.target.closest('.sidebar a')) {
+      sidebar.classList.remove('open');
+      backdrop.classList.remove('show');
+    }
+  });
+}
 // ============================================================
 // Boot
 // ============================================================
@@ -1863,6 +2084,7 @@ async function boot() {
 
     renderNav();
     bindGlobalSearch();
+    initMenuToggle();
     await render();
   } catch (err) { setStatus('Failed'); toast(err.message); }
 }
@@ -1873,6 +2095,10 @@ window.addEventListener('hashchange', async () => {
 });
 
 const refreshBtn = $('#refresh-btn');
-if (refreshBtn) refreshBtn.onclick = () => { state.data = {}; render(); };
+if (refreshBtn) refreshBtn.onclick = () => {
+  state.data = {};
+  state.dataTime = {};
+  render();
+};
 
 boot();
