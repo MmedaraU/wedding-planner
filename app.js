@@ -308,6 +308,19 @@ function guessType(name) {
   return 'text';
 }
 
+// Look up dropdown options for a column from the schema's validations.
+// Returns an array (possibly empty) of option strings.
+function optionsForColumn(schema, columnName) {
+  if (!schema || !schema.validations || !columnName) return [];
+  // Exact match first
+  if (schema.validations[columnName]) return schema.validations[columnName];
+  // Case-insensitive fallback (sheet headers are exact, but be safe)
+  const lower = String(columnName).toLowerCase();
+  const hit = Object.keys(schema.validations)
+    .find(k => k.toLowerCase() === lower);
+  return hit ? schema.validations[hit] : [];
+}
+
 // ============================================================
 // Section helpers — for hierarchical sheets
 // ============================================================
@@ -396,9 +409,16 @@ function readForm(root) {
 
 function renderInlineEditor(row, schema) {
   const cols = schema.columns || [];
-  const fields = (schema.fields && schema.fields.length)
+  const baseFields = (schema.fields && schema.fields.length)
     ? schema.fields
     : cols.map(c => ({ name: c, label: c, type: guessType(c) }));
+
+  // Attach dropdown options from the sheet's data validations, if any.
+  const fields = baseFields.map(f => {
+    const opts = optionsForColumn(schema, f.name);
+    return opts.length ? { ...f, options: opts } : f;
+  });
+
   return `<div class="ql-editor">
     ${fields.map(f => renderField(f, row[f.name])).join('')}
     <div class="ql-editor-actions">
@@ -1189,7 +1209,9 @@ function showQuickAdd(schema, roles, stripEl) {
     .filter(name => cols.find(c => c.toLowerCase() === name.toLowerCase()))
     .map(name => {
       const realName = cols.find(c => c.toLowerCase() === name.toLowerCase());
-      return { name: realName, label: realName, type: guessType(realName) };
+      const base = { name: realName, label: realName, type: guessType(realName) };
+      const opts = optionsForColumn(schema, realName);
+      return opts.length ? { ...base, options: opts } : base;
     });
   if (fields.length === 0 && roles.nameField) {
     fields.push({ name: roles.nameField, label: roles.nameField, type: 'text' });
