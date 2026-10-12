@@ -1921,16 +1921,31 @@ async function renderVendors() {
       chip.onclick = () => { state.filter._vendors = chip.dataset.kind; renderVendors(); };
     });
 
-    // Expand/collapse vendor card
+    // Single delegated click handler on #view.
+    // Order matters: check the Edit button first, then the stage select,
+    // then fall through to the collapse toggle.
     $('#view').onclick = (e) => {
-      const card = e.target.closest('.vendor-card'); if (!card) return;
+      // 1. Edit button — opens the vendor editor
+      const editBtn = e.target.closest('.vendor-edit-btn');
+      if (editBtn) {
+        const card = editBtn.closest('.vendor-card');
+        if (!card) return;
+        const source = card.dataset.source;
+        const rowNum = Number(card.dataset.row);
+        const vendor = named.find(v => v._source === source && v._row === rowNum);
+        if (vendor) openVendorEditor(card, vendor);
+        return;
+      }
 
-      // Don't collapse when the click is on an interactive element
-      // inside the card. Otherwise opening the stage dropdown (or
-      // tapping Call / WhatsApp) immediately hides the card.
+      // 2. Any click inside the actions row (select, call, whatsapp) — ignore
       if (e.target.closest('.vendor-actions')) return;
+
+      // 3. Any click on a form element — ignore
       if (e.target.closest('select, a, button, input, textarea')) return;
 
+      // 4. Otherwise toggle the card
+      const card = e.target.closest('.vendor-card');
+      if (!card) return;
       card.classList.toggle('expanded');
     };
 
@@ -1948,24 +1963,6 @@ async function renderVendors() {
         rowEl.dataset.prevStage = newVal;
       };
     });
-
-    // Vendor field editor
-    // Vendor field editor — delegated so ordering with the collapse
-    // handler can't be a race.
-    const editBtn = e.target.closest('.vendor-edit-btn');
-    if (editBtn) {
-      const card = editBtn.closest('.vendor-card');
-      const source = card.dataset.source;
-      const rowNum = Number(card.dataset.row);
-      const vendor = named.find(v => v._source === source && v._row === rowNum);
-      if (vendor) {
-        e.stopPropagation();
-        openVendorEditor(card, vendor);
-        return;
-      }
-    }
-
-    // --- existing collapse logic stays below ---
 
     setStatus('Synced ' + new Date().toLocaleTimeString());
   } catch (err) { setStatus('Failed'); toast(err.message); }
