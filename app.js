@@ -413,6 +413,13 @@ function renderInlineEditor(row, schema) {
 // Dispatcher
 // ============================================================
 async function render() {
+  // Reset any view-level click handler a previous view may have bound.
+  // Views that need one bind it themselves during renderView(); views
+  // that use their own container (like Guests via #g-list) leave this
+  // null, so their handlers aren't duplicated by a leftover.
+  const view = $('#view');
+  if (view) view.onclick = null;
+
   await renderView();
   injectSubtitle();
 }
