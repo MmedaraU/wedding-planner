@@ -1947,6 +1947,20 @@ async function renderVendors() {
       };
     });
 
+    // Vendor field editor
+    $$('.vendor-card').forEach(card => {
+      const editBtn = card.querySelector('.vendor-edit-btn');
+      if (!editBtn) return;
+      const source = card.dataset.source;
+      const rowNum = Number(card.dataset.row);
+      const vendor = named.find(v => v._source === source && v._row === rowNum);
+      if (!vendor) return;
+      editBtn.onclick = (e) => {
+        e.stopPropagation();
+        openVendorEditor(card, vendor);
+      };
+    });
+
     setStatus('Synced ' + new Date().toLocaleTimeString());
   } catch (err) { setStatus('Failed'); toast(err.message); }
 }
@@ -1997,6 +2011,7 @@ function renderVendorRow(v) {
         <a class="vendor-action" href="${escapeHtml(tel)}">📞 Call</a>
         <a class="vendor-action wa" href="${escapeHtml(wa)}" target="_blank" rel="noopener">💬 WhatsApp</a>
       ` : ''}
+      <button type="button" class="vendor-action vendor-edit-btn">✎ Edit</button>
     </div>
     <div class="vendor-details">
       ${v.contact ? `<div><span class="vendor-dl">Contact:</span> ${escapeHtml(v.contact)}</div>` : ''}
@@ -2008,6 +2023,62 @@ function renderVendorRow(v) {
   </div>`;
 }
 
+function openVendorEditor(card, vendor) {
+  const existing = card.querySelector('.vendor-editor');
+  if (existing) { existing.remove(); return; }
+
+  const raw = vendor._raw || {};
+  const findKey = (...cands) => {
+    for (const c of cands) {
+      if (raw[c] !== undefined) return c;
+    }
+    return '';
+  };
+
+  const fieldDefs = [
+    { key: findKey('Wedding Vendor/Company', 'Name/Company', 'Vendor', 'Vendor/Company'), label: 'Name' },
+    { key: findKey('Type', 'Food items'), label: 'Type' },
+    { key: findKey('Contact Person'), label: 'Contact person' },
+    { key: findKey('Phone number', 'Phone numbers'), label: 'Phone' },
+    { key: findKey('Address', 'Location'), label: 'Address' },
+    { key: findKey('City/State'), label: 'City / State' },
+    { key: findKey('Price', 'Price(for comparison)'), label: 'Price' },
+    { key: findKey('Notes (Bride)', 'Notes'), label: 'Notes', type: 'textarea' }
+  ].filter(f => f.key);
+
+  const fields = fieldDefs.map(f => ({
+    name: f.key,
+    label: f.label,
+    type: f.type || guessType(f.key)
+  }));
+
+  const editor = document.createElement('div');
+  editor.className = 'vendor-editor ql-editor';
+  editor.innerHTML = `
+    ${fields.map(f => renderField(f, raw[f.name])).join('')}
+    <div class="ql-editor-actions">
+      <button type="button" class="btn" data-action="cancel">Cancel</button>
+      <button type="button" class="btn btn-primary" data-action="save">Save</button>
+    </div>
+  `;
+
+  const details = card.querySelector('.vendor-details');
+  card.insertBefore(editor, details);
+
+  editor.onclick = async (e) => {
+    e.stopPropagation();
+    const action = e.target.dataset.action;
+    if (action === 'cancel') { editor.remove(); return; }
+    if (action !== 'save') return;
+
+    const data = readForm(editor);
+    const res = await apiWrite('update', vendor._source, data, null, vendor._row);
+    if (res.error) { toast('Save failed: ' + res.error); return; }
+    toast('Saved');
+    editor.remove();
+    renderVendors();
+  };
+}
 
 // ============================================================
 // VIEW: Global search
