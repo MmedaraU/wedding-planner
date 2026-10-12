@@ -492,7 +492,7 @@ async function renderOverview() {
       ${stats.planning_total ? renderProgress(planPct, 'Planning schedule') : ''}
       ${stats.bridal_total ? renderProgress(bridalPct, 'Bridal list') : ''}
       ${stats.guests_total ? renderProgress(guestPct, 'Guest confirmations') : ''}
-      ${stats.budget_budgeted ? renderProgress(budgetUsedPct, 'Actual vs Budgeted') : ''}
+      ${stats.budget_budgeted ? renderProgress(budgetUsedPct, 'Budget Used') : ''}
 
       ${Object.entries(metaGrouped)
         .filter(([g]) => !['Dates', 'Couple', 'Team'].includes(g))
@@ -1375,7 +1375,7 @@ async function renderBudget(schema) {
           { label: 'Available', value: available == null ? '—' : money(available), hint }
         ]);
       })()}
-      ${renderProgress(totalBudgeted ? (totalActual / totalBudgeted) * 100 : 0, 'Actual vs budgeted')}
+      ${renderProgress(totalBudgeted ? (totalActual / totalBudgeted) * 100 : 0, 'Budget used')}
       <div id="bd-add-strip"></div>
       <h2>Sections</h2>
       <div class="section-cards">
