@@ -2375,6 +2375,24 @@ td.empty {
   min-width: 70px;
 }
 
+.vendor-editor {
+  padding: 14px 14px 14px 48px;
+  background: var(--surface-alt);
+  border-top: 1px solid var(--border);
+  -webkit-animation: ql-slide-down 0.15s ease;
+  animation: ql-slide-down 0.15s ease;
+}
+.vendor-editor .ql-editor-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.vendor-editor .field { margin-bottom: 10px; }
+.vendor-editor .field:last-of-type { margin-bottom: 0; }
+
 /* ============================================================
    WEDDING DAY — Contact cards + venues
    ============================================================ */

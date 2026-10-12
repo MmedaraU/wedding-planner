@@ -301,10 +301,12 @@ function detectFieldRoles(schema) {
 }
 
 function guessType(name) {
-  if (/date/i.test(name)) return 'date';
-  if (/notes?|comment|detail|description/i.test(name)) return 'textarea';
-  if (/price|cost|amount|number|count|budgeted|actual|deposit/i.test(name)) return 'number';
-  if (/response|status|category|stage|tier/i.test(name)) return 'select';
+  const n = String(name);
+  if (/date/i.test(n)) return 'date';
+  if (/notes?|comment|detail|description/i.test(n)) return 'textarea';
+  if (/phone|tel|mobile/i.test(n)) return 'text';
+  if (/price|cost|amount|budgeted|actual|deposit|qty|quantity/i.test(n)) return 'number';
+  if (/response|status|category|stage|tier/i.test(n)) return 'select';
   return 'text';
 }
 
@@ -1948,18 +1950,22 @@ async function renderVendors() {
     });
 
     // Vendor field editor
-    $$('.vendor-card').forEach(card => {
-      const editBtn = card.querySelector('.vendor-edit-btn');
-      if (!editBtn) return;
+    // Vendor field editor — delegated so ordering with the collapse
+    // handler can't be a race.
+    const editBtn = e.target.closest('.vendor-edit-btn');
+    if (editBtn) {
+      const card = editBtn.closest('.vendor-card');
       const source = card.dataset.source;
       const rowNum = Number(card.dataset.row);
       const vendor = named.find(v => v._source === source && v._row === rowNum);
-      if (!vendor) return;
-      editBtn.onclick = (e) => {
+      if (vendor) {
         e.stopPropagation();
         openVendorEditor(card, vendor);
-      };
-    });
+        return;
+      }
+    }
+
+    // --- existing collapse logic stays below ---
 
     setStatus('Synced ' + new Date().toLocaleTimeString());
   } catch (err) { setStatus('Failed'); toast(err.message); }
