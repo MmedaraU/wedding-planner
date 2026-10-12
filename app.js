@@ -657,7 +657,7 @@ function openTeamEditor(team) {
     const data = {};
     new FormData(form).forEach((v, k) => { data[k] = String(v).trim(); });
     const action = isEdit ? 'updateTeam' : 'createTeam';
-    const res = await apiWrite(action, 'General Information', data, null, team?._row);
+    const res = await apiWrite(action, 'Team', data, null, team?._row);
     if (res.error) return toast('Save failed: ' + res.error);
     modal.remove();
     toast(isEdit ? 'Saved' : 'Added');
@@ -668,7 +668,7 @@ function openTeamEditor(team) {
   if (isEdit) {
     modal.querySelector('[data-action="delete"]').onclick = async () => {
       if (!confirm('Delete this team member?')) return;
-      const res = await apiWrite('deleteTeam', 'General Information', null, null, team._row);
+      const res = await apiWrite('deleteTeam', 'Team', null, null, team._row);
       if (res.error) return toast('Delete failed: ' + res.error);
       modal.remove();
       toast('Deleted');
