@@ -485,14 +485,14 @@ async function renderOverview() {
       <h2>Progress</h2>
       ${renderStats([
       { label: 'Guests confirmed', value: `${stats.guests_coming || 0} / ${stats.guests_total || 0}` },
-      { label: 'Budget spent', value: `${Math.round(budgetUsedPct)}%` },
+      { label: 'Actual cost', value: `${Math.round(budgetUsedPct)}%` },
       { label: 'Plan tasks done', value: `${stats.planning_done || 0} / ${stats.planning_total || 0}` },
       { label: 'Bridal tasks done', value: `${stats.bridal_done || 0} / ${stats.bridal_total || 0}` }
     ])}
       ${stats.planning_total ? renderProgress(planPct, 'Planning schedule') : ''}
       ${stats.bridal_total ? renderProgress(bridalPct, 'Bridal list') : ''}
       ${stats.guests_total ? renderProgress(guestPct, 'Guest confirmations') : ''}
-      ${stats.budget_budgeted ? renderProgress(budgetUsedPct, 'Budget used') : ''}
+      ${stats.budget_budgeted ? renderProgress(budgetUsedPct, 'Actual vs Budgeted') : ''}
 
       ${Object.entries(metaGrouped)
         .filter(([g]) => !['Dates', 'Couple', 'Team'].includes(g))
@@ -1369,13 +1369,13 @@ async function renderBudget(schema) {
           : (available < 0 ? 'over budget' : 'cash on hand');
         return renderStats([
           { label: 'Budgeted', value: money(totalBudgeted) },
-          { label: 'Spent', value: money(totalActual), hint: remaining >= 0 ? money(remaining) + ' left' : money(-remaining) + ' over' },
+          { label: 'Actual cost', value: money(totalActual), hint: remaining >= 0 ? money(remaining) + ' left' : money(-remaining) + ' over' },
           { label: 'Paid', value: money(totalPaid) },
           { label: 'Outstanding', value: money(outstanding) },
           { label: 'Available', value: available == null ? '—' : money(available), hint }
         ]);
       })()}
-      ${renderProgress(totalBudgeted ? (totalActual / totalBudgeted) * 100 : 0, 'Spent vs budgeted')}
+      ${renderProgress(totalBudgeted ? (totalActual / totalBudgeted) * 100 : 0, 'Actual vs budgeted')}
       <div id="bd-add-strip"></div>
       <h2>Sections</h2>
       <div class="section-cards">
