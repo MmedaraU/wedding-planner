@@ -1369,7 +1369,7 @@ async function renderBudget(schema) {
           : (available < 0 ? 'over budget' : 'cash on hand');
         return renderStats([
           { label: 'Budgeted', value: money(totalBudgeted) },
-          { label: 'Actual cost', value: money(totalActual), hint: remaining >= 0 ? money(remaining) + ' left' : money(-remaining) + ' over' },
+          { label: 'Actual cost', value: money(totalActual) },
           { label: 'Paid', value: money(totalPaid) },
           { label: 'Outstanding', value: money(outstanding) },
           { label: 'Available', value: available == null ? '—' : money(available), hint }
