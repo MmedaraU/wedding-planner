@@ -109,29 +109,27 @@ a:hover { text-decoration: underline; }
   :root { --sidebar-width: 280px; }
 }
 
-/* Collapsed sidebar — desktop only */
+/* Collapsed sidebar — desktop only.
+   The class lives on <body> because #menu-toggle is a sibling
+   of #app, not a descendant. */
 @media (min-width: 901px) {
-  #app.sidebar-collapsed {
+  body.sidebar-collapsed #app {
     grid-template-columns: 0 1fr;
   }
-  #app.sidebar-collapsed .sidebar {
+  body.sidebar-collapsed .sidebar {
     overflow: hidden;
     padding-left: 0;
     padding-right: 0;
     border-right: none;
     pointer-events: none;
   }
-}
 
-/* Desktop toggle */
-@media (min-width: 901px) {
   .menu-toggle {
     display: flex;
     top: 12px;
     left: calc(var(--sidebar-width) - 52px);
   }
-
-  #app.sidebar-collapsed .menu-toggle {
+  body.sidebar-collapsed .menu-toggle {
     left: 12px;
   }
 }

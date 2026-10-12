@@ -1864,6 +1864,13 @@ async function renderVendors() {
     // Expand/collapse vendor card
     $('#view').onclick = (e) => {
       const card = e.target.closest('.vendor-card'); if (!card) return;
+
+      // Don't collapse when the click is on an interactive element
+      // inside the card. Otherwise opening the stage dropdown (or
+      // tapping Call / WhatsApp) immediately hides the card.
+      if (e.target.closest('.vendor-actions')) return;
+      if (e.target.closest('select, a, button, input, textarea')) return;
+
       card.classList.toggle('expanded');
     };
 
@@ -2087,35 +2094,15 @@ function initMenuToggle() {
   const btn = $('#menu-toggle');
   const sidebar = $('.sidebar');
   const backdrop = $('#menu-backdrop');
+  const body = document.body;
   if (!btn || !sidebar || !backdrop) return;
 
-  btn.onclick = () => {
-    sidebar.classList.toggle('open');
-    backdrop.classList.toggle('show');
-  };
-  backdrop.onclick = () => {
-    sidebar.classList.remove('open');
-    backdrop.classList.remove('show');
-  };
-  document.addEventListener('click', (e) => {
-    if (e.target.closest('#nav a') || e.target.closest('.sidebar a')) {
-      sidebar.classList.remove('open');
-      backdrop.classList.remove('show');
-    }
-  });
-} function initMenuToggle() {
-  const btn = $('#menu-toggle');
-  const sidebar = $('.sidebar');
-  const backdrop = $('#menu-backdrop');
-  const app = $('#app');
-  if (!btn || !sidebar || !backdrop || !app) return;
-
-  // Are we in the mobile drawer layout? (Must match the CSS breakpoint.)
+  // Must match the CSS breakpoint (max-width: 900px / min-width: 901px).
   const isMobile = () => window.matchMedia('(max-width: 900px)').matches;
 
   // Restore persisted desktop collapse preference on boot.
   if (!isMobile() && localStorage.getItem('sidebarCollapsed') === '1') {
-    app.classList.add('sidebar-collapsed');
+    body.classList.add('sidebar-collapsed');
   }
 
   btn.onclick = () => {
@@ -2124,8 +2111,10 @@ function initMenuToggle() {
       sidebar.classList.toggle('open');
       backdrop.classList.toggle('show');
     } else {
-      // Desktop: collapse / expand the grid column, persist the choice.
-      const collapsed = app.classList.toggle('sidebar-collapsed');
+      // Desktop: collapse / expand via a body-level class so the CSS
+      // can also reposition the toggle button (which is a sibling of
+      // #app, not a descendant). Persist the choice.
+      const collapsed = body.classList.toggle('sidebar-collapsed');
       localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0');
     }
   };
@@ -2136,7 +2125,7 @@ function initMenuToggle() {
   };
 
   // Close the mobile drawer when a nav link is tapped.
-  // (No-op on desktop, where the sidebar isn't a drawer.)
+  // Guarded so it's a no-op on desktop, where the sidebar isn't a drawer.
   document.addEventListener('click', (e) => {
     if (!isMobile()) return;
     if (e.target.closest('#nav a') || e.target.closest('.sidebar a')) {
