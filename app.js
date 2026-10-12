@@ -1606,14 +1606,28 @@ async function renderGuests(schema) {
     const pending = rows.filter(r => !r[respCol] || r[respCol] === 'Pending').reduce((s, r) => s + (Number(r[countCol]) || 0), 0);
     const needHotel = rows.filter(r => r[hotelCol] === 'Hotel').length;
 
-    const categories = catCol ? Array.from(new Set(rows.map(r => r[catCol]).filter(Boolean))).sort() : [];
+    // Bucket each guest's raw category into Bride / Groom / Other.
+    //   contains "bride" → Bride
+    //   contains "groom" → Groom
+    //   anything else   → Other
+    const bucketOf = r => {
+      const raw = catCol ? String(r[catCol] || '') : '';
+      if (/bride/i.test(raw)) return 'Bride';
+      if (/groom/i.test(raw)) return 'Groom';
+      return 'Other';
+    };
+    const allBuckets = ['Bride', 'Groom', 'Other'];
+    const presentBuckets = catCol
+      ? allBuckets.filter(b => rows.some(r => bucketOf(r) === b))
+      : [];
+
     const activeCat = state.filter[schema.sheet] || 'All';
     const respFilters = ['All', 'Coming', 'Pending', 'Not Coming'];
     const activeResp = state.filter[schema.sheet + '_resp'] || 'All';
     const q = (state.search[schema.sheet] || '').toLowerCase();
 
     let filtered = rows;
-    if (activeCat !== 'All' && catCol) filtered = filtered.filter(r => r[catCol] === activeCat);
+    if (activeCat !== 'All' && catCol) filtered = filtered.filter(r => bucketOf(r) === activeCat);
     if (activeResp !== 'All') {
       filtered = filtered.filter(r => {
         const v = respCol ? r[respCol] : '';
@@ -1643,9 +1657,9 @@ async function renderGuests(schema) {
     ).join('')}
         </div>
       </div>
-      ${categories.length ? `<div class="chips">
+      ${presentBuckets.length ? `<div class="chips">
         <button class="chip ${activeCat === 'All' ? 'on' : ''}" data-cat="All">All</button>
-        ${categories.map(c => `<button class="chip ${activeCat === c ? 'on' : ''}" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('')}
+        ${presentBuckets.map(b => `<button class="chip ${activeCat === b ? 'on' : ''}" data-cat="${escapeHtml(b)}">${escapeHtml(b)}</button>`).join('')}
       </div>` : ''}
       <div id="g-add-strip"></div>
       <div class="ql-list" id="g-list">
