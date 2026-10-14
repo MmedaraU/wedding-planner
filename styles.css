@@ -3106,3 +3106,18 @@ h3 { font-size: 15px; }
   min-width: 24px;
   text-align: center;
 }
+
+.view-warning {
+  background: var(--warning-soft);
+  color: var(--warning-text);
+  border-left: 3px solid var(--warning-text);
+  padding: 8px 12px;
+  -webkit-border-radius: var(--radius-sm);
+  -moz-border-radius: var(--radius-sm);
+  -ms-border-radius: var(--radius-sm);
+  -o-border-radius: var(--radius-sm);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  line-height: 1.4;
+  margin-bottom: 16px;
+}

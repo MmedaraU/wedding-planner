@@ -4,12 +4,13 @@
 
 const CONFIG = window.WEDDING_CONFIG;
 
-const VENDOR_SOURCES = [
-  { sheet: 'Wedding Vendor Sourcing', kind: 'Wedding', visible: true },
-  { sheet: 'Household Vendor Sourcing', kind: 'Household', visible: true },
-  { sheet: 'Food Vendor Sourcing', kind: 'Food', visible: false },
-  { sheet: 'Honeymoon Vendor Sourcing', kind: 'Honeymoon', visible: false }
-];
+// Vendor sources are derived from _app_config at runtime.
+// Any row with a value in the `vendorKind` column is treated as a vendor source.
+function getVendorSources() {
+  return (state.schema || [])
+    .filter(s => s.vendorKind)
+    .map(s => ({ sheet: s.sheet, kind: s.vendorKind }));
+}
 
 const VIRTUAL_NAV = [
   { route: '_today', label: 'Today', order: 0 },
@@ -173,6 +174,7 @@ function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+
 function money(n) {
   const num = Number(n || 0);
   if (!num) return '₦0';
@@ -282,6 +284,16 @@ const NAME_RE = /\b(name|names|item|task|thing|vendor|description|title|guest|co
 const STATUS_RE = /\b(status|stage|response|state|category)\b/i;
 const DATE_RE = /\b(date|due|when|deadline)\b/i;
 
+// Additional patterns that flag a row as a section header, even when not ALL CAPS.
+// Matches things like "Part 1: ...", "Section 2", "Chapter III", "A. Something".
+const SECTION_PATTERNS = [
+  /^part\s+[\dIVX]+/i,
+  /^section\s+[\dIVX]+/i,
+  /^chapter\s+[\dIVX]+/i,
+  /^[A-Z]\.\s+\S/,          // "A. Something"
+  /^\d+\.\s+[A-Z]/          // "1. Something"
+];
+
 function detectFieldRoles(schema) {
   const cols = schema.columns || [];
   const useIfPresent = (val, re) => {
@@ -332,18 +344,42 @@ const SKIP_AS_HEADER = /^(budgeted cost|actual cost|deposit made|deposit made\/m
 function attachSections(rows, roles) {
   let currentSection = '';
   const out = [];
+
   rows.forEach(r => {
     const raw = r[roles.nameField];
     const name = raw == null ? '' : String(raw).trim();
     if (!name) return;
+
+    // Skip subtotal/total rows outright
     if (/^(sub-?total|total|grand total)\b/i.test(name)) return;
     if (SKIP_AS_HEADER.test(name)) return;
-    const noCheckbox = r[roles.checkField] === '' || r[roles.checkField] === false || r[roles.checkField] == null;
+
+    const noCheckbox = r[roles.checkField] === ''
+      || r[roles.checkField] === false
+      || r[roles.checkField] == null;
+
     const hasLetters = /[A-Za-z]/.test(name);
     const isAllCaps = hasLetters && name === name.toUpperCase();
-    if (isAllCaps && noCheckbox) { currentSection = name; return; }
+    const matchesPattern = SECTION_PATTERNS.some(re => re.test(name));
+
+    // A row is a section header when:
+    //   - it has no checkbox, AND
+    //   - it either reads as ALL CAPS or matches one of the section patterns, AND
+    //   - it has no value in any of the money columns (so priced items
+    //     that happen to be ALL CAPS don't get promoted by mistake)
+    const hasBudgetData = pick(r, 'budgeted', 'Budgeted', 'Budgeted Cost') !== '';
+    const hasActualData = pick(r, 'actual', 'Actual', 'Actual Cost') !== '';
+    const hasDepositData = pick(r, 'deposit', 'Deposit', 'Paid', 'Deposit Made') !== '';
+    const isUnpriced = !hasBudgetData && !hasActualData && !hasDepositData;
+
+    if (noCheckbox && (isAllCaps || matchesPattern) && isUnpriced) {
+      currentSection = name;
+      return;
+    }
+
     out.push({ ...r, _section: currentSection });
   });
+
   return out;
 }
 
@@ -1386,11 +1422,15 @@ async function renderBudget(schema) {
     });
 
     $('#view').innerHTML = `
-      <div class="toolbar">
-        <h1>${escapeHtml(schema.label)}</h1>
-        <button class="btn btn-primary" id="bd-add">+ Add expense</button>
-      </div>
-      ${(() => {
+  <div class="toolbar">
+    <h1>${escapeHtml(schema.label)}</h1>
+    <button class="btn btn-primary" id="bd-add">+ Add expense</button>
+  </div>
+  ${schema.sheet === 'budget_flat' ? `
+    <div class="view-warning">
+      ⚠️ If you insert or delete rows in the Budget sheet, go to Workbook Tools ➡️ Refresh budget_flat from Budget
+    </div>` : ''}
+  ${(() => {
         const ov = state.data.__overview || {};
         const available = (ov.stats && typeof ov.stats.budget_available === 'number')
           ? ov.stats.budget_available
@@ -1854,13 +1894,14 @@ function renderGiftRow(row, schema, { nameCol, amountCol, thankCol, dateCol }) {
 async function renderVendors() {
   setStatus('Loading vendors…');
   try {
-    const results = await Promise.all(VENDOR_SOURCES.map(s => apiGetRows(s.sheet)));
+    const sources = getVendorSources();
+    const results = await Promise.all(sources.map(s => apiGetRows(s.sheet)));
 
     const vendors = [];
     results.forEach((res, i) => {
       if (res.error) return;
       (res.rows || []).forEach(r => {
-        vendors.push(normalizeVendor(r, VENDOR_SOURCES[i]));
+        vendors.push(normalizeVendor(r, sources[i]));
       });
     });
 
@@ -2092,10 +2133,9 @@ async function renderSearch() {
   if (!q) { $('#view').innerHTML = '<h1>Search</h1><p class="muted">Type in the search box above.</p>'; return; }
 
   setStatus('Searching…');
-  const sources = [
-    ...state.schema.filter(s => s.type === 'data').map(s => s.sheet),
-    ...VENDOR_SOURCES.map(s => s.sheet)
-  ];
+  const sources = state.schema
+    .filter(s => s.type === 'data')
+    .map(s => s.sheet);
   const unique = Array.from(new Set(sources));
 
   // Fetch any missing sheets
@@ -2176,7 +2216,7 @@ function renderNav() {
 
   const items = [];
   VIRTUAL_NAV.forEach(v => items.push({ route: v.route, label: v.label, order: v.order }));
-  state.schema.filter(s => s.type !== 'link').forEach(s => {
+  state.schema.filter(s => s.visible && s.type !== 'link').forEach(s => {
     items.push({ route: s.sheet, label: s.label, order: s.sortOrder });
   });
   // Links (external)
@@ -2279,6 +2319,15 @@ async function boot() {
     state.schema = res.schema || [];
     state.booted = true;
 
+    // Guard: if there are no views configured, show a helpful message
+    if (!state.schema.length) {
+      showBootError(
+        'No views configured',
+        'The spreadsheet has no visible sheets set up. Ask the admin to check the "_app_config" sheet.'
+      );
+      return;
+    }
+
     const hash = location.hash.replace('#/', '');
     state.route = hash ? decodeURIComponent(hash) : '_overview';
 
@@ -2286,7 +2335,19 @@ async function boot() {
     bindGlobalSearch();
     initMenuToggle();
     await render();
-  } catch (err) { setStatus('Failed'); toast(err.message); }
+  } catch (err) {
+    showBootError('Could not load the app', err.message);
+  }
+}
+
+function showBootError(title, message) {
+  setStatus('Failed');
+  $('#view').innerHTML = `
+    <div class="ql-empty" style="padding-top: 80px;">
+      <h1>${escapeHtml(title)}</h1>
+      <p class="muted">${escapeHtml(message)}</p>
+      <button class="btn btn-primary" onclick="location.reload()" style="margin-top:16px">Try again</button>
+    </div>`;
 }
 
 window.addEventListener('hashchange', async () => {
