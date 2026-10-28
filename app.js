@@ -561,13 +561,24 @@ async function renderOverview() {
 
       ${Object.entries(metaGrouped)
         .filter(([g]) => !['Dates', 'Couple', 'Team'].includes(g))
-        .map(([g, items]) => `
-          <div class="meta-group">
-            <div class="meta-group-name">${escapeHtml(g)}</div>
-            <table class="info-table meta-table"><tbody>
-              ${items.map(it => renderMetaRow(g, it)).join('')}
-            </tbody></table>
-          </div>`).join('')}
+        .map(([g, items]) => {
+          // 1. List the technical keys you want to hide from the UI
+          const hiddenKeys = ['contact_email', 'savings', 'cash_at_hand'];
+
+          // 2. Filter them out
+          const visibleItems = items.filter(it => !hiddenKeys.includes(it.key));
+
+          // 3. If a group is empty after filtering, hide the whole group
+          if (visibleItems.length === 0) return '';
+
+          return `
+            <div class="meta-group">
+              <div class="meta-group-name">${escapeHtml(g)}</div>
+              <table class="info-table meta-table"><tbody>
+                ${visibleItems.map(it => renderMetaRow(g, it)).join('')}
+              </tbody></table>
+            </div>`;
+        }).join('')}
     `;
     bindOverviewMeta();
     setStatus('Synced ' + new Date().toLocaleTimeString());
