@@ -280,9 +280,9 @@ function normalizePhone(raw) {
 // ============================================================
 
 const CHECK_RE = /\b(returned|packed|done|thanked|arrived|signed|completed|bought|booked|received|sent|paid|decided)\b/i;
-const NAME_RE = /\b(name|names|item|task|thing|vendor|description|title|guest|company|chore|question)\b/i;
+const NAME_RE = /\b(name|names|item|task|thing|vendor|description|title|guest|company|chore|question|activity)\b/i;
 const STATUS_RE = /\b(status|stage|response|state|category)\b/i;
-const DATE_RE = /\b(date|due|when|deadline)\b/i;
+const DATE_RE = /\b(date|due|when|deadline|time)\b/i;
 
 // Additional patterns that flag a row as a section header, even when not ALL CAPS.
 // Matches things like "Part 1: ...", "Section 2", "Chapter III", "A. Something".
