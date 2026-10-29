@@ -482,6 +482,136 @@ async function render() {
   injectSubtitle();
 }
 
+// ============================================================
+// VIEW: Day-Of Schedule (Custom Grouping)
+// ============================================================
+async function renderDayOfSchedule(schema) {
+  setStatus('Loading schedule…');
+  try {
+    // 1. Fetch the schedule rows
+    const res = await apiGetRows(schema.sheet);
+    if (res.error) throw new Error(res.error);
+    const rows = res.rows || [];
+    state.data[schema.sheet] = rows;
+
+    // 2. Fetch the meta dates (TM, Wedding, etc.)
+    const ov = await apiGetOverview();
+    const meta = ov.meta || {};
+
+    if (rows.length > 0 && !schema.columns) schema.columns = Object.keys(rows[0]).filter(k => k !== '_row');
+    const cols = schema.columns || [];
+    const roles = detectFieldRoles(schema);
+
+    const doneCol = roles.checkField || 'Done';
+    const nameCol = roles.nameField || 'Activity';
+    const timeCol = roles.dateField || 'Time';
+
+    // Helper to get the event label based on the date
+    const getEventLabel = (dateObj) => {
+      if (!dateObj) return '';
+      const dStr = dateObj.toDateString();
+
+      if (meta.tm_date && parseSheetDate(meta.tm_date)?.toDateString() === dStr) return 'Traditional Marriage';
+      if (meta.wedding_date && parseSheetDate(meta.wedding_date)?.toDateString() === dStr) return 'Wedding & Reception';
+      if (meta.friends_night_date && parseSheetDate(meta.friends_night_date)?.toDateString() === dStr) return 'Friends Night';
+
+      return '';
+    };
+
+    // 3. Group by Date
+    const grouped = {};
+    rows.forEach(r => {
+      const rawTime = r[timeCol];
+      const dateObj = parseSheetDate(rawTime);
+
+      const dateKey = dateObj
+        ? dateObj.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+        : 'Unscheduled';
+
+      if (!grouped[dateKey]) grouped[dateKey] = [];
+      grouped[dateKey].push(r);
+    });
+
+    // 4. Sort the dates
+    const sortedDates = Object.keys(grouped).sort((a, b) => {
+      if (a === 'Unscheduled') return 1;
+      if (b === 'Unscheduled') return -1;
+      return parseSheetDate(grouped[a][0][timeCol]) - parseSheetDate(grouped[b][0][timeCol]);
+    });
+
+    // 5. Sort tasks within each date
+    sortedDates.forEach(date => {
+      grouped[date].sort((a, b) => {
+        const timeA = parseSheetDate(a[timeCol])?.getTime() || 0;
+        const timeB = parseSheetDate(b[timeCol])?.getTime() || 0;
+        return timeA - timeB;
+      });
+    });
+
+    const total = rows.length;
+    const doneCount = roles.checkField ? rows.filter(r => isChecked(r[doneCol])).length : 0;
+    const pct = total ? (doneCount / total) * 100 : 0;
+
+    $('#view').innerHTML = `
+      <div class="toolbar">
+        <h1>${escapeHtml(schema.label)}</h1>
+        <button class="btn btn-primary" id="dos-add">+ Add Item</button>
+      </div>
+      
+      ${renderProgress(pct, 'Day-Of Progress')}
+      <div id="dos-add-strip"></div>
+
+      ${sortedDates.length === 0 ? `<div class="ql-empty">Nothing scheduled yet</div>` :
+        sortedDates.map(date => {
+          const dateObj = parseSheetDate(grouped[date][0][timeCol]);
+          const eventLabel = getEventLabel(dateObj);
+
+          // Combine label and date (e.g., "Traditional Marriage — Thursday, December 14")
+          const headerText = eventLabel ? `${eventLabel} — ${date}` : date;
+
+          return `
+          <div class="tl-bucket">
+            <div class="tl-bucket-header" style="margin-top: 24px;">
+              <span class="tl-bucket-name" style="color: var(--grad-to); font-size: 16px;">${escapeHtml(headerText)}</span>
+              <span class="tl-bucket-count">${grouped[date].length} items</span>
+            </div>
+            <div class="ql-list">
+              ${grouped[date].map(r => {
+            const id = rowId(r, schema);
+            const isDone = isChecked(r[doneCol]);
+            const tObj = parseSheetDate(r[timeCol]);
+
+            // Format time (e.g., "8:00 AM")
+            const timeStr = tObj
+              ? tObj.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+              : '';
+
+            return `<div class="ql-row ${isDone ? 'done' : ''}" data-id="${escapeHtml(String(id))}" data-row="${r._row}">
+                  <div class="ql-row-main">
+                    <button type="button" class="ql-check ${isDone ? 'on' : ''}" data-action="toggle">${isDone ? '✓' : ''}</button>
+                    <div class="ql-row-info" data-action="expand">
+                      <div class="ql-row-name">${escapeHtml(r[nameCol] || '—')}</div>
+                    </div>
+                    ${timeStr ? `<span class="pill" style="background: var(--surface-alt); border-color: var(--border); font-weight: 600; color: var(--text);">${escapeHtml(timeStr)}</span>` : ''}
+                    <button type="button" class="ql-more" data-action="expand">⋯</button>
+                  </div>
+                  ${state.expanded === schema.sheet + ':' + id ? renderInlineEditor(r, schema) : ''}
+                </div>`;
+          }).join('')}
+            </div>
+          </div>`;
+        }).join('')}
+    `;
+
+    bindRowInteractions(schema);
+    $('#dos-add').onclick = () => showQuickAdd(schema, roles, $('#dos-add-strip'));
+
+    setStatus('Synced ' + new Date().toLocaleTimeString());
+  } catch (err) {
+    setStatus('Failed'); toast(err.message);
+  }
+}
+
 async function renderView() {
   if (state.route === '_overview') return renderOverview();
   if (state.route === '_today') return renderToday();
@@ -498,7 +628,8 @@ async function renderView() {
     renderQuickList: renderQuickList,
     renderBudget: renderBudget,
     renderGuests: renderGuests,
-    renderGifts: renderGifts
+    renderGifts: renderGifts,
+    renderDayOfSchedule: renderDayOfSchedule // 👈 Add this line
   };
   const fn = map[schema.view] || renderQuickList;
   await fn(schema);

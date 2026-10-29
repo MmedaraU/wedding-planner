@@ -111,6 +111,19 @@ The script reads the `Planning Schedule` and sends an email on the 1st of every 
 *   It calculates how much you need to save monthly to hit your ₦30M target based on your current `savings`.
 *   It sends the email to the address(es) in `contact_email`.
 
+### 📅 The 12-Month Trigger Switch (Year 1 vs. Year 2)
+To keep the app fast and avoid cluttering Google's execution logs, the `budget_flat` sync is initially set to run **Weekly** (via a Time-driven trigger in Apps Script). 
+*   **Year 1 (Now):** The weekly trigger is perfect because you are mostly saving and doing high-level planning.
+*   **Year 2 (12 Months Out):** As you start booking vendors and paying deposits, you will be editing the Budget frequently. **You must remember to change the trigger to Daily.**
+    1. Go to Apps Script → **⏰ Triggers**.
+    2. Edit the `extractBudgetToFlat` trigger.
+    3. Change the type from `Week timer` to `Day timer` (e.g., 2:00 AM - 3:00 AM).
+    4. Save.
+*(There is a task in your Planning Schedule for Jan 1, 2028, to remind you to do this).*
+
+### 🌐 The Guest Website
+The companion planning app (this repository) is private and password-protected. The separate **Guest Website** (for RSVPs, hotel bookings, and registry) has a password that should be removed when you send out your Save the Dates or Invitations. 
+*   There is a task in the Planning Schedule for August 2028 to remind you to unlock it.
 ---
 
 ## 🔒 Privacy & Security
