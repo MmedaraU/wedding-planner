@@ -274,7 +274,26 @@ function normalizePhone(raw) {
   if (digits.length === 13 && digits.startsWith('234')) return '0' + digits.slice(3);
   return s;
 }
+function fmtTime(val) {
+  if (!val) return '';
+  const s = String(val);
 
+  // Matches ISO strings like "2028-12-14T14:30:00.000Z"
+  const match = s.match(/T(\d{2}):(\d{2})/);
+  if (match) {
+    let hours = Number(match[1]);
+    const minutes = match[2];
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12; // the hour '0' should be '12'
+    return `${hours}:${minutes} ${ampm}`;
+  }
+
+  // Fallback for other formats
+  const d = new Date(s);
+  if (isNaN(d)) return '';
+  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
 // ============================================================
 // Field role detection (resilient)
 // ============================================================
@@ -579,12 +598,8 @@ async function renderDayOfSchedule(schema) {
               ${grouped[date].map(r => {
             const id = rowId(r, schema);
             const isDone = isChecked(r[doneCol]);
-            const tObj = parseSheetDate(r[timeCol]);
-
             // Format time (e.g., "8:00 AM")
-            const timeStr = tObj
-              ? tObj.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-              : '';
+            const timeStr = fmtTime(r[timeCol]);
 
             return `<div class="ql-row ${isDone ? 'done' : ''}" data-id="${escapeHtml(String(id))}" data-row="${r._row}">
                   <div class="ql-row-main">
