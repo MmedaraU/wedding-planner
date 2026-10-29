@@ -2318,24 +2318,74 @@ function initMenuToggle() {
   });
 }
 
+
 // ============================================================
-// Boot
+// AUTHENTICATION & BOOT
 // ============================================================
 
 async function boot() {
+  const savedSecret = localStorage.getItem('wedding_secret');
+
+  if (savedSecret) {
+    // If they already logged in previously, skip the login screen
+    CONFIG.secret = savedSecret;
+    document.getElementById('login-screen').style.display = 'none';
+    await startApp();
+  } else {
+    // Show the login screen
+    const loginBtn = document.getElementById('login-btn');
+    const loginInput = document.getElementById('login-password');
+    const loginError = document.getElementById('login-error');
+
+    loginInput.focus();
+
+    const attemptLogin = async () => {
+      const enteredSecret = loginInput.value.trim();
+      if (!enteredSecret) return;
+
+      loginBtn.textContent = 'Checking...';
+      loginError.style.display = 'none';
+
+      // Temporarily set the secret to test it
+      CONFIG.secret = enteredSecret;
+
+      try {
+        const res = await apiGetSchema();
+        if (res.error === 'unauthorized') {
+          // Wrong password
+          loginBtn.textContent = 'Unlock';
+          loginError.style.display = 'block';
+          loginInput.value = '';
+        } else {
+          // Success! Save to browser and boot the app
+          localStorage.setItem('wedding_secret', enteredSecret);
+          document.getElementById('login-screen').style.display = 'none';
+          await startApp();
+        }
+      } catch (err) {
+        loginBtn.textContent = 'Unlock';
+        loginError.textContent = 'Network error. Try again.';
+        loginError.style.display = 'block';
+      }
+    };
+
+    loginBtn.onclick = attemptLogin;
+    loginInput.onkeydown = (e) => { if (e.key === 'Enter') attemptLogin(); };
+  }
+}
+
+// Move the actual app startup logic here
+async function startApp() {
   try {
     setStatus('Loading schema…');
     const res = await apiGetSchema();
     if (res.error) throw new Error(res.error);
+
     state.schema = res.schema || [];
     state.booted = true;
 
-    // Guard: if there are no views configured, show a helpful message
     if (!state.schema.length) {
-      showBootError(
-        'No views configured',
-        'The spreadsheet has no visible sheets set up. Ask the admin to check the "_app_config" sheet.'
-      );
+      showBootError('No views configured', 'The spreadsheet has no visible sheets set up.');
       return;
     }
 
@@ -2351,16 +2401,6 @@ async function boot() {
   }
 }
 
-function showBootError(title, message) {
-  setStatus('Failed');
-  $('#view').innerHTML = `
-    <div class="ql-empty" style="padding-top: 80px;">
-      <h1>${escapeHtml(title)}</h1>
-      <p class="muted">${escapeHtml(message)}</p>
-      <button class="btn btn-primary" onclick="location.reload()" style="margin-top:16px">Try again</button>
-    </div>`;
-}
-
 window.addEventListener('hashchange', async () => {
   const route = decodeURIComponent(location.hash.replace('#/', ''));
   await routeTo(route);
@@ -2373,4 +2413,10 @@ if (refreshBtn) refreshBtn.onclick = () => {
   render();
 };
 
+const lockBtn = $('#lock-btn');
+if (lockBtn) lockBtn.onclick = () => {
+  localStorage.removeItem('wedding_secret');
+  location.reload(); // This reloads the page and shows the login screen again
+};
+// Start the app
 boot();

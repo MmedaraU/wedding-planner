@@ -14,6 +14,20 @@
 </head>
 
 <body>
+  <!-- LOGIN OVERLAY -->
+  <div id="login-screen"
+    style="position:fixed; inset:0; background:var(--gradient); z-index:9999; display:flex; align-items:center; justify-content:center; padding:20px;">
+    <div
+      style="background:var(--surface); padding:32px; border-radius:var(--radius-lg); width:100%; max-width:400px; box-shadow:var(--shadow-lg); text-align:center;">
+      <h2 style="margin-top:0; color:var(--grad-to);">Mmedara & Ikedinachi</h2>
+      <p class="muted" style="margin-bottom:20px;">Enter the password to access the planner.</p>
+      <input type="password" id="login-password" placeholder="Password"
+        style="width:100%; padding:12px; border:1px solid var(--border); border-radius:var(--radius-sm); margin-bottom:12px; font-size:16px;">
+      <button id="login-btn" class="btn btn-primary" style="width:100%; padding:12px; font-size:16px;">Unlock</button>
+      <div id="login-error" style="color:var(--danger); font-size:13px; margin-top:10px; display:none;">Incorrect
+        password. Try again.</div>
+    </div>
+  </div>
   <button id="menu-toggle" class="menu-toggle" aria-label="Toggle menu">☰</button>
   <div id="menu-backdrop" class="menu-backdrop"></div>
   <div id="app">
@@ -26,6 +40,7 @@
       <div class="sidebar-footer">
         <span id="status" class="status">Loading…</span>
         <button id="refresh-btn" class="btn btn-ghost">Refresh</button>
+        <button id="lock-btn" class="btn btn-ghost" style="color:var(--danger)">Lock App</button>
       </div>
     </aside>
 
@@ -42,7 +57,7 @@
   <div id="toast" class="toast" hidden></div>
 
   <script src="config.js"></script>
-  <script src="app.js?v=23"></script>
+  <script src="app.js?v=24"></script>
 </body>
 
 </html>
