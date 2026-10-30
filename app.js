@@ -278,21 +278,18 @@ function fmtTime(val) {
   if (!val) return '';
   const s = String(val);
 
-  // Matches ISO strings like "2028-12-14T14:30:00.000Z"
-  const match = s.match(/T(\d{2}):(\d{2})/);
+  // Matches "HH:mm" anywhere in the string (e.g., "2028-12-14 14:30:00" or "12/14/2028 08:00")
+  const match = s.match(/\b(\d{1,2}):(\d{2})/);
   if (match) {
     let hours = Number(match[1]);
     const minutes = match[2];
     const ampm = hours >= 12 ? 'PM' : 'AM';
     hours = hours % 12;
-    hours = hours ? hours : 12; // the hour '0' should be '12'
+    hours = hours ? hours : 12;
     return `${hours}:${minutes} ${ampm}`;
   }
 
-  // Fallback for other formats
-  const d = new Date(s);
-  if (isNaN(d)) return '';
-  return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return '';
 }
 // ============================================================
 // Field role detection (resilient)
@@ -705,6 +702,26 @@ async function renderOverview() {
       ${stats.guests_total ? renderProgress(guestPct, 'Guest confirmations') : ''}
       ${stats.budget_actual ? renderProgress((stats.budget_deposit / stats.budget_actual) * 100, 'Paid so far') : ''}
 
+      <h2>Savings Tracker</h2>
+      ${(() => {
+        const goal = stats.savings_goal || 30000000;
+        const saved = stats.total_saved || 0;
+        const remaining = Math.max(0, goal - saved);
+        const pct = goal ? (saved / goal) * 100 : 0;
+        const monthsLeft = stats.savings_months_left || 1;
+        const monthlyTarget = Math.ceil(remaining / monthsLeft);
+
+        return `
+          ${renderStats([
+          { label: 'Total Saved', value: money(saved) },
+          { label: 'Target Goal', value: money(goal) },
+          { label: 'Remaining', value: money(remaining) },
+          { label: 'Target / Month', value: money(monthlyTarget), hint: `${monthsLeft} months left` }
+        ])}
+          ${renderProgress(pct, 'Savings Progress')}
+        `;
+      })()}
+      
       ${Object.entries(metaGrouped)
         .filter(([g]) => !['Dates', 'Couple', 'Team'].includes(g))
         .map(([g, items]) => {
@@ -731,6 +748,8 @@ async function renderOverview() {
   } catch (err) {
     setStatus('Failed'); toast(err.message);
   }
+
+
 }
 
 function renderMetaRow(group, item) {
