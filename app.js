@@ -370,9 +370,7 @@ function attachSections(rows, roles) {
     if (/^(sub-?total|total|grand total)\b/i.test(name)) return;
     if (SKIP_AS_HEADER.test(name)) return;
 
-    const noCheckbox = r[roles.checkField] === ''
-      || r[roles.checkField] === false
-      || r[roles.checkField] == null;
+    const noCheckbox = !isChecked(r[roles.checkField]);
 
     const hasLetters = /[A-Za-z]/.test(name);
     const isAllCaps = hasLetters && name === name.toUpperCase();
@@ -1574,7 +1572,12 @@ async function renderBudget(schema) {
       ? all.map(r => ({ ...r, _section: r.section || 'Other' }))
       : attachSections(all, roles);
 
-    const num = v => Number(v) || 0;
+    const num = v => {
+      if (!v) return 0;
+      if (typeof v === 'number') return v;
+      const cleaned = String(v).replace(/[^0-9.-]+/g, '');
+      return Number(cleaned) || 0;
+    };
     const getB = r => num(pick(r, 'budgeted', 'Budgeted', 'Budgeted Cost'));
     const getA = r => num(pick(r, 'actual', 'Actual', 'Actual Cost'));
     const getD = r => num(pick(r, 'deposit', 'Deposit', 'Paid', 'Deposit Made'));
@@ -1730,7 +1733,12 @@ async function renderBudget(schema) {
 }
 
 function renderBudgetItem(row, allRows, schema) {
-  const num = v => Number(v) || 0;
+  const num = v => {
+    if (!v) return 0;
+    if (typeof v === 'number') return v;
+    const cleaned = String(v).replace(/[^0-9.-]+/g, '');
+    return Number(cleaned) || 0;
+  };
   const budgeted = num(pick(row, 'budgeted', 'Budgeted', 'Budgeted Cost'));
   const actual = num(pick(row, 'actual', 'Actual', 'Actual Cost'));
   const paid = num(pick(row, 'deposit', 'Deposit', 'Paid', 'Deposit Made'));
