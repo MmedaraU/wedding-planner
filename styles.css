@@ -2311,15 +2311,14 @@ td.empty {
 .vendor-card .ql-row-main { cursor: pointer; }
 
 .vendor-actions {
-  display: none;
+  display: flex;
   gap: 8px;
-  padding: 10px 14px 10px 48px;
+  padding: 10px 14px;
   background: var(--surface-alt);
   border-top: 1px solid var(--border);
   flex-wrap: wrap;
   align-items: center;
 }
-.vendor-card.expanded .vendor-actions { display: flex; }
 
 .vendor-stage-select {
   padding: 6px 10px;
@@ -3120,4 +3119,209 @@ h3 { font-size: 15px; }
   font-size: 13px;
   line-height: 1.4;
   margin-bottom: 16px;
+}
+
+.ql-row.unreviewed { background: #FFF8E1; }
+.ql-row.unreviewed .ql-row-name::after {
+  content: '●';
+  color: var(--accent);
+  margin-left: 8px;
+  font-size: 10px;
+  vertical-align: super;
+}
+
+/* ============================================================
+   OVERVIEW REDESIGN — Grid & Accordions
+   ============================================================ */
+
+.overview-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 32px;
+}
+
+@media (max-width: 900px) {
+  .overview-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Forces exactly 2 columns on desktop */
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+/* Forces 1 column on mobile/tablets */
+@media (max-width: 900px) {
+  .meta-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.meta-accordion {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  -webkit-border-radius: var(--radius);
+  -moz-border-radius: var(--radius);
+  -ms-border-radius: var(--radius);
+  -o-border-radius: var(--radius);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.meta-accordion summary {
+  padding: 14px 16px;
+  font-weight: 600;
+  font-size: 15px;
+  font-family: var(--font-display);
+  color: var(--accent);
+  cursor: pointer;
+  background: var(--surface-alt);
+  list-style: none; /* Hide default arrow */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.meta-accordion summary::-webkit-details-marker {
+  display: none;
+}
+
+.meta-accordion summary::after {
+  content: '+';
+  font-size: 18px;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.meta-accordion[open] summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.meta-accordion[open] summary::after {
+  content: '−';
+}
+
+.meta-accordion .info-table {
+  border: none;
+  -webkit-border-radius: 0;
+  -moz-border-radius: 0;
+  -ms-border-radius: 0;
+  -o-border-radius: 0;
+  border-radius: 0;
+  box-shadow: none;
+  margin: 0;
+}
+
+/* Editable Stat Cards */
+.editable-stat {
+  cursor: pointer;
+  -webkit-transition: border-color 0.15s, transform 0.1s;
+  -moz-transition: border-color 0.15s, transform 0.1s;
+  -ms-transition: border-color 0.15s, transform 0.1s;
+  -o-transition: border-color 0.15s, transform 0.1s;
+  transition: border-color 0.15s, transform 0.1s;
+  position: relative;
+}
+.editable-stat:hover {
+  border-color: var(--accent);
+  -webkit-transform: translateY(-1px);
+  -moz-transform: translateY(-1px);
+  -ms-transform: translateY(-1px);
+  -o-transform: translateY(-1px);
+  transform: translateY(-1px);
+}
+.editable-stat .stat-label::after {
+  content: ' ✎';
+  color: var(--muted);
+  font-size: 12px;
+  margin-left: 4px;
+  opacity: 0;
+  -webkit-transition: opacity 0.15s;
+  -moz-transition: opacity 0.15s;
+  -ms-transition: opacity 0.15s;
+  -o-transition: opacity 0.15s;
+  transition: opacity 0.15s;
+}
+.editable-stat:hover .stat-label::after {
+  opacity: 1;
+}
+
+/* Force long URLs and text to wrap inside the expander tables */
+.info-table .meta-value-text {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  word-wrap: break-word;
+}
+
+/* Fix Team Tab Overflow */
+.team-card {
+  min-width: 0; /* Prevents the grid column from expanding past its boundary */
+  overflow: hidden;
+}
+
+/* Force long names and descriptions to wrap */
+.contact-name,
+.team-desc {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+/* Allow long event names inside the pills to wrap instead of pushing the card out */
+.team-meta-row {
+  min-width: 0;
+}
+
+.team-meta-row .pill {
+  white-space: normal; 
+  word-break: break-word;
+  text-align: left;
+  line-height: 1.3;
+}
+
+/* Inline Status Dropdown for Logistics */
+.logistics-status-select {
+  -moz-appearance: none;
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 4px 24px 4px 10px;
+  -webkit-border-radius: 999px;
+  -moz-border-radius: 999px;
+  -ms-border-radius: 999px;
+  -o-border-radius: 999px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--text);
+  cursor: pointer;
+  outline: none;
+  background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%236b6b85%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px top 50%;
+  background-size: 10px auto;
+  -webkit-transition: border-color 0.15s;
+  -moz-transition: border-color 0.15s;
+  -ms-transition: border-color 0.15s;
+  -o-transition: border-color 0.15s;
+  transition: border-color 0.15s;
+}
+
+.logistics-status-select:hover {
+  border-color: var(--accent);
+}
+
+.logistics-status-select:disabled {
+  opacity: 0.5;
+  cursor: wait;
 }

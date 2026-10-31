@@ -16,7 +16,9 @@ const VIRTUAL_NAV = [
   { route: '_today', label: 'Today', order: 0 },
   { route: '_overview', label: 'Overview', order: 5 },
   { route: '_team', label: 'Team', order: 15 },
-  { route: '_vendors', label: 'Vendors', order: 55 }
+  { route: '_vendors', label: 'Vendors', order: 55 },
+  { route: '_gifts', label: 'Gifts & Cash', order: 65 },
+  { route: '_logistics', label: 'Logistics', order: 75 }
 ];
 
 // Short one-line explanations shown under each view's title
@@ -31,7 +33,7 @@ const SUBTITLES = {
   'Bridal List': 'Dowry, ceremony items, and traditions — grouped by section',
   'Rentals Tracker': "What we're borrowing, and when it goes back",
   'budget_flat': 'Every naira in, every naira out',
-  'Guest List': "Who's coming, who's pending, who needs a hotel",
+  'Guest List': "Who's coming, who's pending, who still needs an invite",
   'Gifts Received': "Presents received, and who's been thanked",
   'Cash Contributions': 'Contributions received, and who\'s been thanked',
   'Things to get to and from venue': 'Things to carry to the venue, and bring back',
@@ -100,14 +102,16 @@ async function apiGetOverview(force) {
   return res;
 }
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const GUEST_CACHE_TTL_MS = 60 * 1000;  // 60s — Guest List changes externally
 
 async function apiGetRows(sheetName, force) {
   const now = Date.now();
   state.dataTime = state.dataTime || {};
   const cached = state.data[sheetName];
   const cachedAt = state.dataTime[sheetName] || 0;
+  const ttl = sheetName === 'Guest List' ? GUEST_CACHE_TTL_MS : CACHE_TTL_MS;
 
-  if (!force && cached && (now - cachedAt) < CACHE_TTL_MS) {
+  if (!force && cached && (now - cachedAt) < ttl) {
     return { rows: cached };
   }
 
@@ -183,8 +187,17 @@ function money(n) {
 function parseSheetDate(val) {
   if (val == null || val === '') return null;
   const s = String(val);
-  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+  // Match YYYY-MM-DD optionally followed by HH:MM(:SS)?
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if (m) {
+    const y = Number(m[1]);
+    const mo = Number(m[2]) - 1;
+    const day = Number(m[3]);
+    const h = m[4] ? Number(m[4]) : 0;
+    const mi = m[5] ? Number(m[5]) : 0;
+    const sec = m[6] ? Number(m[6]) : 0;
+    return new Date(y, mo, day, h, mi, sec);
+  }
   const d = new Date(s);
   return isNaN(d) ? null : d;
 }
@@ -211,6 +224,18 @@ function toISODate(val) {
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
+
+function toISODateTime(val) {
+  const d = parseSheetDate(val);
+  if (!d) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const h = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${y}-${m}-${day}T${h}:${min}`;
+}
+
 function daysUntil(val) {
   const target = parseSheetDate(val);
   if (!target) return null;
@@ -227,11 +252,13 @@ function debounce(fn, ms) {
 }
 function rowId(row, schema) {
   const idField = (schema.columns || [])[schema.idColumn - 1];
-  if (idField) {
+  // Skip if the "ID" column is actually the checkbox column
+  if (idField && idField !== schema.checkField) {
     const val = row[idField];
-    // Skip booleans and empty values — use physical row instead
-    if (val !== undefined && val !== '' && val !== null
-      && val !== false && val !== true) {
+    // getDisplayValues() returns booleans as strings "TRUE"/"FALSE",
+    // so we must catch both real booleans and their string forms.
+    const s = String(val ?? '').trim().toLowerCase();
+    if (s && s !== 'true' && s !== 'false') {
       return val;
     }
   }
@@ -330,7 +357,8 @@ function detectFieldRoles(schema) {
 
 function guessType(name) {
   const n = String(name);
-  if (/date/i.test(n)) return 'date';
+  if (/date|due|when|deadline/i.test(n)) return 'date';
+  if (/time/i.test(n)) return 'datetime-local'; // 👈 Added this line
   if (/notes?|comment|detail|description/i.test(n)) return 'textarea';
   if (/phone|tel|mobile/i.test(n)) return 'text';
   if (/price|cost|amount|budgeted|actual|deposit|qty|quantity/i.test(n)) return 'number';
@@ -424,12 +452,14 @@ function renderField(field, value, compact = false) {
   const name = escapeHtml(field.name);
   const label = field.label || field.name;
   const type = field.type || 'text';
+
   if (type === 'checkbox') {
     return `<label class="field field-checkbox" for="${id}">
       <input type="checkbox" id="${id}" name="${name}" ${isChecked(value) ? 'checked' : ''}>
       <span>${escapeHtml(label)}</span>
     </label>`;
   }
+
   let input;
   if (field.options && field.options.length) {
     input = `<select id="${id}" name="${name}"><option value=""></option>
@@ -438,16 +468,23 @@ function renderField(field, value, compact = false) {
   } else if (type === 'textarea') {
     input = `<textarea id="${id}" name="${name}" rows="2">${escapeHtml(value ?? '')}</textarea>`;
   } else if (type === 'date') {
-    // API returns date cells as ISO timestamps; browsers only accept
-    // YYYY-MM-DD in <input type="date">, so normalise before rendering.
     input = `<input id="${id}" name="${name}" type="date" value="${escapeHtml(toISODate(value))}">`;
+  } else if (type === 'datetime-local') {
+    input = `<input id="${id}" name="${name}" type="datetime-local" value="${escapeHtml(toISODateTime(value))}">`;
+  } else if (type === 'number') {
+    // 👇 NEW FIX: Strip commas and symbols so type="number" works
+    let numVal = value;
+    if (typeof value === 'string') {
+      numVal = value.replace(/[^0-9.-]+/g, '');
+    }
+    input = `<input id="${id}" name="${name}" type="number" value="${escapeHtml(numVal ?? '')}">`;
   } else {
     input = `<input id="${id}" name="${name}" type="${type}" value="${escapeHtml(value ?? '')}">`;
   }
+
   const cls = compact ? 'field field-compact' : 'field';
   return `<div class="${cls}"><label for="${id}">${escapeHtml(label)}</label>${input}</div>`;
 }
-
 function readForm(root) {
   const data = {};
   $$('input, select, textarea', root).forEach(el => {
@@ -461,12 +498,16 @@ function readForm(root) {
 
 function renderInlineEditor(row, schema) {
   const cols = schema.columns || [];
+  const checkField = schema.checkField || detectFieldRoles(schema).checkField;
   const baseFields = (schema.fields && schema.fields.length)
     ? schema.fields
     : cols.map(c => ({ name: c, label: c, type: guessType(c) }));
 
-  // Attach dropdown options from the sheet's data validations, if any.
+  // Force checkbox type for the check field; attach dropdown options.
   const fields = baseFields.map(f => {
+    if (checkField && f.name === checkField) {
+      return { ...f, type: 'checkbox' };
+    }
     const opts = optionsForColumn(schema, f.name);
     return opts.length ? { ...f, options: opts } : f;
   });
@@ -628,6 +669,8 @@ async function renderView() {
   if (state.route === '_vendors') return renderVendors();
   if (state.route === '_search') return renderSearch();
   if (state.route === '_team') return renderTeamPage();
+  if (state.route === '_gifts') return renderGiftsCash();
+  if (state.route === '_logistics') return renderLogistics();
 
   const schema = currentSchema();
   if (!schema) { $('#view').innerHTML = '<h1>Not found</h1>'; return; }
@@ -667,8 +710,18 @@ async function renderOverview() {
     const planPct = stats.planning_total ? (stats.planning_done / stats.planning_total) * 100 : 0;
     const bridalPct = stats.bridal_total ? (stats.bridal_done / stats.bridal_total) * 100 : 0;
 
+    // Savings Stats
+    const goal = stats.savings_goal || 30000000;
+    const saved = stats.total_saved || 0;
+    const remaining = Math.max(0, goal - saved);
+    const pct = goal ? (saved / goal) * 100 : 0;
+    const monthsLeft = stats.savings_months_left || 1;
+    const monthlyTarget = Math.ceil(remaining / monthsLeft);
+
     $('#view').innerHTML = `
       <h1>Overview</h1>
+      
+      <!-- HERO -->
       <div class="hero">
         <div class="hero-left">
           <div class="hero-couple">${escapeHtml(coupleName)}</div>
@@ -682,72 +735,94 @@ async function renderOverview() {
         </div>
       </div>
 
+      <!-- KEY DATES -->
       ${datesGroup.length ? `
-        <h2>Key dates</h2>
-        <table class="info-table meta-table"><tbody>
-          ${datesGroup.map(d => renderMetaRow('Dates', d)).join('')}
-        </tbody></table>` : ''}
+        <details class="meta-accordion" open>
+          <summary>Key Dates</summary>
+          <table class="info-table meta-table"><tbody>
+            ${datesGroup.map(d => renderMetaRow('Dates', d)).join('')}
+          </tbody></table>
+        </details>
+      ` : ''}
 
-      <h2>Progress</h2>
-      ${renderStats([
+      <!-- DASHBOARD GRID -->
+      <div class="overview-grid">
+        
+        <!-- Progress Column -->
+        <div>
+          <h2>Progress</h2>
+          ${renderStats([
       { label: 'Guests confirmed', value: `${stats.guests_coming || 0} / ${stats.guests_total || 0}` },
-      { label: 'Actual cost', value: `${Math.round(budgetUsedPct)}%` },
       { label: 'Plan tasks done', value: `${stats.planning_done || 0} / ${stats.planning_total || 0}` },
       { label: 'Bridal tasks done', value: `${stats.bridal_done || 0} / ${stats.bridal_total || 0}` }
     ])}
-      ${stats.planning_total ? renderProgress(planPct, 'Planning schedule') : ''}
-      ${stats.bridal_total ? renderProgress(bridalPct, 'Bridal list') : ''}
-      ${stats.guests_total ? renderProgress(guestPct, 'Guest confirmations') : ''}
-      ${stats.budget_actual ? renderProgress((stats.budget_deposit / stats.budget_actual) * 100, 'Paid so far') : ''}
+          <div style="margin-top: 24px;">
+            ${renderProgress(planPct, 'Planning schedule')}
+            ${renderProgress(bridalPct, 'Bridal list')}
+            ${renderProgress(guestPct, 'Guest confirmations')}
+          </div>
+        </div>
 
-      <h2>Savings Tracker</h2>
-      ${(() => {
-        const goal = stats.savings_goal || 30000000;
-        const saved = stats.total_saved || 0;
-        const remaining = Math.max(0, goal - saved);
-        const pct = goal ? (saved / goal) * 100 : 0;
-        const monthsLeft = stats.savings_months_left || 1;
-        const monthlyTarget = Math.ceil(remaining / monthsLeft);
+        <!-- Finance Column -->
+        <div>
+          <h2>Finances</h2>
+          <div class="stats" style="grid-template-columns: 1fr 1fr;">
+            
+            <!-- Editable Savings Card -->
+            <div class="stat editable-stat" data-key="savings" data-label="Total Saved" title="Click to edit base savings">
+              <div class="stat-label">Total Saved</div>
+              <div class="stat-value">${money(saved)}</div>
+            </div>
 
-        return `
-          ${renderStats([
-          { label: 'Total Saved', value: money(saved) },
-          { label: 'Target Goal', value: money(goal) },
-          { label: 'Remaining', value: money(remaining) },
-          { label: 'Target / Month', value: money(monthlyTarget), hint: `${monthsLeft} months left` }
-        ])}
-          ${renderProgress(pct, 'Savings Progress')}
-        `;
-      })()}
-      
-      ${Object.entries(metaGrouped)
-        .filter(([g]) => !['Dates', 'Couple', 'Team'].includes(g))
+            <!-- Editable Goal Card -->
+            <div class="stat editable-stat" data-key="savings_goal" data-label="Target Goal" title="Click to edit goal">
+              <div class="stat-label">Target Goal</div>
+              <div class="stat-value">${money(goal)}</div>
+            </div>
+
+            <div class="stat">
+              <div class="stat-label">Remaining</div>
+              <div class="stat-value">${money(remaining)}</div>
+            </div>
+            <div class="stat">
+              <div class="stat-label">Target / Month</div>
+              <div class="stat-value">${money(monthlyTarget)}</div>
+              <div class="stat-hint">${monthsLeft} months left</div>
+            </div>
+
+          </div>
+          
+          <div style="margin-top: 24px;">
+            ${renderProgress(pct, 'Savings Progress')}
+            ${renderProgress(budgetUsedPct, 'Budget Used (Actual vs Budgeted)')}
+          </div>
+        </div>
+      </div>
+
+      <h2>Wedding Details</h2>
+      <div class="meta-grid">
+        ${Object.entries(metaGrouped)
+        .filter(([g]) => !['Dates', 'Couple', 'Team', 'Budget'].includes(g))
         .map(([g, items]) => {
-          // 1. List the technical keys you want to hide from the UI
           const hiddenKeys = ['contact_email', 'savings', 'cash_at_hand'];
-
-          // 2. Filter them out
           const visibleItems = items.filter(it => !hiddenKeys.includes(it.key));
-
-          // 3. If a group is empty after filtering, hide the whole group
           if (visibleItems.length === 0) return '';
 
           return `
-            <div class="meta-group">
-              <div class="meta-group-name">${escapeHtml(g)}</div>
-              <table class="info-table meta-table"><tbody>
-                ${visibleItems.map(it => renderMetaRow(g, it)).join('')}
-              </tbody></table>
-            </div>`;
+              <details class="meta-accordion">
+                <summary>${escapeHtml(g)}</summary>
+                <table class="info-table meta-table"><tbody>
+                  ${visibleItems.map(it => renderMetaRow(g, it)).join('')}
+                </tbody></table>
+              </details>`;
         }).join('')}
+      </div>
     `;
-    bindOverviewMeta();
+    bindOverviewMeta(meta);
     setStatus('Synced ' + new Date().toLocaleTimeString());
   } catch (err) {
     setStatus('Failed'); toast(err.message);
   }
-
-
 }
 
 function renderMetaRow(group, item) {
@@ -778,9 +853,52 @@ function renderMetaRow(group, item) {
     </tr>` : ''}`;
 }
 
-function bindOverviewMeta() {
+function bindOverviewMeta(meta) {
   const view = $('#view'); if (!view) return;
+
   view.onclick = async (e) => {
+    // 1. Intercept clicks on editable stat cards
+    const editableStat = e.target.closest('.editable-stat');
+    if (editableStat && !editableStat.classList.contains('editing')) {
+      const key = editableStat.dataset.key;
+      const label = editableStat.dataset.label;
+      const currentValue = key === 'savings' ? (meta.savings || '') : (meta.savings_goal || '');
+
+      editableStat.classList.add('editing');
+      editableStat.innerHTML = `
+        <div class="stat-label">${label}</div>
+        <input type="number" class="stat-input" value="${currentValue}" style="width: 100%; padding: 6px; font-size: 16px; border: 1px solid var(--accent); border-radius: 4px; margin: 4px 0; font-family: inherit;">
+        <div style="display: flex; gap: 4px; justify-content: flex-end;">
+          <button type="button" class="btn btn-ghost" data-action="cancel-stat" style="padding: 2px 6px; font-size: 11px;">Cancel</button>
+          <button type="button" class="btn btn-primary" data-action="save-stat" style="padding: 2px 6px; font-size: 11px;">Save</button>
+        </div>
+      `;
+      const input = editableStat.querySelector('input');
+      input.focus();
+      input.select();
+      return;
+    }
+
+    // 2. Handle Save/Cancel for the stat cards
+    const saveStatBtn = e.target.closest('[data-action="save-stat"]');
+    if (saveStatBtn) {
+      const stat = saveStatBtn.closest('.editable-stat');
+      const key = stat.dataset.key;
+      const input = stat.querySelector('input');
+      const newValue = input.value;
+
+      const res = await apiWrite('update', '_app_meta', { value: newValue }, key);
+      if (res.error) return toast('Save failed: ' + res.error);
+      toast('Saved');
+      return renderOverview();
+    }
+
+    const cancelStatBtn = e.target.closest('[data-action="cancel-stat"]');
+    if (cancelStatBtn) {
+      return renderOverview(); // Re-render resets the card state
+    }
+
+    // 3. Existing Meta Row logic for the tables
     const openTrigger = e.target.closest('[data-action="expand"]');
     if (openTrigger) {
       const metaRow = openTrigger.closest('.meta-row'); if (!metaRow) return;
@@ -802,6 +920,7 @@ function bindOverviewMeta() {
       }
     }
   };
+
   const input = view.querySelector('[data-meta-input]');
   if (input) {
     input.focus();
@@ -1672,9 +1791,18 @@ async function renderBudget(schema) {
       const strip = document.getElementById('bd-add-strip');
       if (strip.firstChild) { strip.innerHTML = ''; return; }
 
+      const availableSections = Object.keys(bySection).filter(s => s !== 'Other');
+
+      let sectionField = null;
+      if (sectionColName) {
+        sectionField = { name: sectionColName, label: 'Section', options: availableSections };
+      } else if (availableSections.length > 0) {
+        sectionField = { name: '_section', label: 'Section', options: availableSections };
+      }
+
       const fields = [
         itemColName && { name: itemColName, label: 'Item' },
-        sectionColName && { name: sectionColName, label: 'Section' },
+        sectionField,
         budgetedColName && { name: budgetedColName, label: 'Budgeted', type: 'number' },
         actualColName && { name: actualColName, label: 'Actual', type: 'number' }
       ].filter(Boolean);
@@ -1693,8 +1821,10 @@ async function renderBudget(schema) {
         const action = e.target.dataset.action;
         if (action === 'cancel') { strip.innerHTML = ''; return; }
         if (action !== 'create') return;
+
         const data = readForm(form);
         if (itemColName && !data[itemColName]) return toast('Item is required');
+
         const res = await apiWrite('create', schema.sheet, data);
         if (res.error) return toast('Add failed: ' + res.error);
         toast('Added'); strip.innerHTML = ''; render();
@@ -1824,18 +1954,15 @@ async function renderGuests(schema) {
     const nameCol = cols.find(c => /name/i.test(c)) || cols[0];
     const catCol = cols.find(c => /category/i.test(c)) || '';
     const respCol = cols.find(c => /response/i.test(c)) || '';
-    const hotelCol = cols.find(c => /accom/i.test(c)) || '';
     const countCol = cols.find(c => /number|count|expect/i.test(c)) || '';
 
     const total = rows.reduce((s, r) => s + (Number(r[countCol]) || 0), 0);
     const coming = rows.filter(r => r[respCol] === 'Coming').reduce((s, r) => s + (Number(r[countCol]) || 0), 0);
     const pending = rows.filter(r => !r[respCol] || r[respCol] === 'Pending').reduce((s, r) => s + (Number(r[countCol]) || 0), 0);
-    const needHotel = rows.filter(r => r[hotelCol] === 'Hotel').length;
+    const unreviewedCount = catCol
+      ? rows.filter(r => String(r[catCol] || '') === 'RSVP (auto-added)').length
+      : 0;
 
-    // Bucket each guest's raw category into Bride / Groom / Other.
-    //   contains "bride" → Bride
-    //   contains "groom" → Groom
-    //   anything else   → Other
     const bucketOf = r => {
       const raw = catCol ? String(r[catCol] || '') : '';
       if (/bride/i.test(raw)) return 'Bride';
@@ -1871,10 +1998,19 @@ async function renderGuests(schema) {
       ${renderStats([
       { label: 'Expected', value: total },
       { label: 'Coming', value: coming },
-      { label: 'Pending', value: pending },
-      { label: 'Hotel', value: needHotel }
+      { label: 'Pending', value: pending }
     ])}
       ${renderProgress(total ? (coming / total) * 100 : 0, 'Confirmed')}
+      ${unreviewedCount > 0 ? `
+        <div style="background: #FFF8E1; border-left: 3px solid var(--accent);
+                    padding: 12px 16px; border-radius: var(--radius-sm);
+                    margin-bottom: 16px; font-size: 13px;">
+          <strong>${unreviewedCount}</strong> new RSVP${unreviewedCount !== 1 ? 's' : ''} awaiting review.
+          <button class="btn btn-primary" id="show-unreviewed" style="margin-left: 12px; padding: 4px 10px; font-size: 11px;">
+            Show them
+          </button>
+        </div>
+      ` : ''}
       <div class="ql-controls">
         <input type="search" id="g-search" placeholder="Search guests…" value="${escapeHtml(state.search[schema.sheet] || '')}">
         <div class="chips">
@@ -1891,14 +2027,12 @@ async function renderGuests(schema) {
       <div class="ql-list" id="g-list">
         ${filtered.length === 0
         ? `<div class="ql-empty">${q || activeCat !== 'All' ? 'No matches' : 'No guests yet'}</div>`
-        : filtered.map(r => renderGuestRow(r, schema, { nameCol, catCol, respCol, hotelCol })).join('')}
+        : filtered.map(r => renderGuestRow(r, schema, { nameCol, catCol, respCol })).join('')}
       </div>`;
 
     const search = $('#g-search');
     if (search) search.oninput = debounce(() => { state.search[schema.sheet] = search.value; renderGuests(schema); }, 200);
 
-    // Category chips only — must NOT match response chips, because those
-    // carry class="chip chip-resp" and are wired up separately below.
     $$('.chip[data-cat]').forEach(chip => {
       chip.onclick = () => {
         state.filter[schema.sheet] = chip.dataset.cat;
@@ -1915,11 +2049,18 @@ async function renderGuests(schema) {
 
     $('#g-add').onclick = () => showQuickAdd(schema, roles, $('#g-add-strip'));
 
+    const showUnreviewedBtn = $('#show-unreviewed');
+    if (showUnreviewedBtn) {
+      showUnreviewedBtn.onclick = () => {
+        state.search[schema.sheet] = 'rsvp (auto-added)';
+        renderGuests(schema);
+      };
+    }
+
     $('#g-list').onclick = async (e) => {
       const rowEl = e.target.closest('.ql-row'); if (!rowEl) return;
       const id = rowEl.dataset.id;
 
-      // RSVP buttons (✓ / ✕) and the expanded RSVP chips
       const rsvp = e.target.closest('[data-rsvp]');
       if (rsvp && respCol) {
         const value = rsvp.dataset.rsvp;
@@ -1946,20 +2087,20 @@ async function renderGuests(schema) {
     setStatus('Synced ' + new Date().toLocaleTimeString());
   } catch (err) { setStatus('Failed'); toast(err.message); }
 }
-
-function renderGuestRow(row, schema, { nameCol, catCol, respCol, hotelCol }) {
+function renderGuestRow(row, schema, { nameCol, catCol, respCol }) {
   const id = rowId(row, schema);
   const key = schema.sheet + ':' + id;
   const expanded = state.expanded === key;
   const name = row[nameCol] || '—';
   const response = respCol ? row[respCol] : '';
-  const hotel = hotelCol ? row[hotelCol] : '';
   const category = catCol ? row[catCol] : '';
   const responseClass = response === 'Coming' ? 'pill-green' : response === 'Not Coming' ? 'pill-red' : '';
   const showCategory = catCol && (state.filter[schema.sheet] || 'All') === 'All';
+  const unreviewed = category === 'RSVP (auto-added)';
   return `<div class="ql-row guest-row
     ${response === 'Coming' ? 'guest-coming' : ''}
     ${response === 'Not Coming' ? 'guest-not-coming' : ''}
+    ${unreviewed ? 'unreviewed' : ''}
     ${expanded ? 'expanded' : ''}"
     data-id="${escapeHtml(String(id))}" data-row="${row._row}">
     <div class="ql-row-main">
@@ -1968,7 +2109,6 @@ function renderGuestRow(row, schema, { nameCol, catCol, respCol, hotelCol }) {
         <div class="ql-row-meta">
           ${showCategory && category ? `<span class="pill">${escapeHtml(category)}</span>` : ''}
           ${response ? `<span class="pill ${responseClass}">${escapeHtml(response)}</span>` : ''}
-          ${hotel === 'Hotel' ? `<span class="pill pill-amber">Hotel</span>` : ''}
         </div>
       </div>
       ${respCol ? `<div class="guest-actions">
@@ -2072,6 +2212,686 @@ function renderGiftRow(row, schema, { nameCol, amountCol, thankCol, dateCol }) {
 }
 
 // ============================================================
+// VIEW: Gifts & Cash (merged)
+// ============================================================
+
+async function renderGiftsCash() {
+  setStatus('Loading gifts & cash…');
+  try {
+    const [gRes, cRes] = await Promise.all([
+      apiGetRows('Gifts Received'),
+      apiGetRows('Cash Contributions')
+    ]);
+
+    // 1. Filter out ghost rows (blank names) and tag them
+    const gifts = (gRes.rows || [])
+      .filter(r => String(r['Name of Person'] || '').trim() !== '')
+      .map(r => ({ ...r, _kind: 'gift' }));
+
+    const cash = (cRes.rows || [])
+      .filter(r => String(r['Name of Person'] || '').trim() !== '')
+      .map(r => ({ ...r, _kind: 'cash' }));
+
+    const giftSchema = state.schema.find(s => s.sheet === 'Gifts Received');
+    const cashSchema = state.schema.find(s => s.sheet === 'Cash Contributions');
+
+    // 2. Teach the app the columns so the inline editor works
+    if (giftSchema && !giftSchema.columns && gifts.length > 0) {
+      giftSchema.columns = Object.keys(gifts[0]).filter(k => k !== '_row' && k !== '_kind');
+    }
+    if (cashSchema && !cashSchema.columns && cash.length > 0) {
+      cashSchema.columns = Object.keys(cash[0]).filter(k => k !== '_row' && k !== '_kind');
+    }
+
+    const activeKind = state.filter._gifts_cash || 'All';
+    const activeThanks = state.filter._gifts_thanks || 'All';
+    const q = (state.search._gifts_cash || '').toLowerCase();
+
+    let rows = [...gifts, ...cash];
+    if (activeKind === 'Gifts') rows = gifts;
+    if (activeKind === 'Cash') rows = cash;
+    if (activeThanks === 'Pending') rows = rows.filter(r => !isChecked(r['Said Thank You']));
+    if (activeThanks === 'Thanked') rows = rows.filter(r => isChecked(r['Said Thank You']));
+
+    if (q) {
+      rows = rows.filter(r =>
+        Object.values(r).some(v => String(v).toLowerCase().includes(q))
+      );
+    }
+
+    // 3. Robust sum parser for Naira
+    const num = v => {
+      if (v == null || v === '') return 0;
+      if (typeof v === 'number') return v;
+      const cleaned = String(v).replace(/[^0-9.-]+/g, '');
+      return Number(cleaned) || 0;
+    };
+
+    const cashSum = cash.reduce((s, r) => s + num(r['Amount']), 0);
+    const allRows = [...gifts, ...cash];
+    const pending = allRows.filter(r => !isChecked(r['Said Thank You']));
+    const thanked = allRows.filter(r => isChecked(r['Said Thank You']));
+
+    // Split for grouped rendering
+    const pendingRows = rows.filter(r => !isChecked(r['Said Thank You']));
+    const thankedRows = rows.filter(r => isChecked(r['Said Thank You']));
+
+    $('#view').innerHTML = `
+      <div class="toolbar">
+        <h1>Gifts &amp; Cash</h1>
+        <button class="btn btn-primary" id="gc-add">+ Add</button>
+      </div>
+      
+      ${cashSum > 0 ? `
+        <div style="background:var(--success-soft); border-left:3px solid var(--success);
+                    padding:12px 16px; border-radius:var(--radius);
+                    margin-bottom:16px; font-size:14px;">
+          <strong>Total cash received:</strong>
+          <span style="font-size:20px; font-weight:700; color:var(--success-text);">
+            ${money(cashSum)}
+          </span>
+          <span class="muted" style="margin-left:8px;">
+            across ${cash.length} contribution${cash.length === 1 ? '' : 's'}
+          </span>
+        </div>
+      ` : ''}
+      
+      ${renderStats([
+      { label: 'Gifts', value: gifts.length },
+      { label: 'Cash gifts', value: cash.length },
+      { label: 'To thank', value: pending.length, hint: pending.length ? 'needs action' : 'all caught up' },
+      { label: 'Thanked', value: `${thanked.length} / ${allRows.length}` }
+    ])}
+      
+      ${allRows.length ? renderProgress((thanked.length / allRows.length) * 100, 'Acknowledged') : ''}
+      
+      <div class="ql-controls">
+        <input type="search" id="gc-search" placeholder="Search names, gifts, amounts…" value="${escapeHtml(state.search._gifts_cash || '')}">
+      </div>
+      
+      <div class="chips">
+        ${['All', 'Gifts', 'Cash'].map(k =>
+      `<button class="chip ${activeKind === k ? 'on' : ''}" data-kind="${k}">${k}</button>`
+    ).join('')}
+      </div>
+      
+      <div class="chips">
+        ${[
+        { key: 'All', label: `All (${allRows.length})` },
+        { key: 'Pending', label: `To thank (${pending.length})` },
+        { key: 'Thanked', label: `Thanked (${thanked.length})` }
+      ].map(c =>
+        `<button class="chip ${activeThanks === c.key ? 'on' : ''}"
+                    data-thanks="${c.key}">${escapeHtml(c.label)}</button>`
+      ).join('')}
+      </div>
+      
+      <div id="gc-add-strip"></div>
+      
+      <div class="ql-list" id="gc-list">
+        ${rows.length === 0
+        ? `<div class="ql-empty">${q ? 'No matches' : 'Nothing yet'}</div>`
+        : renderGiftsCashGrouped(pendingRows, thankedRows, giftSchema, cashSchema, activeThanks)
+      }
+      </div>
+    `;
+
+    const search = $('#gc-search');
+    if (search) search.oninput = debounce(() => {
+      state.search._gifts_cash = search.value;
+      renderGiftsCash();
+    }, 200);
+
+    $$('.chip[data-kind]').forEach(chip => {
+      chip.onclick = () => {
+        state.filter._gifts_cash = chip.dataset.kind;
+        renderGiftsCash();
+      };
+    });
+
+    $$('.chip[data-thanks]').forEach(chip => {
+      chip.onclick = () => {
+        state.filter._gifts_thanks = chip.dataset.thanks;
+        renderGiftsCash();
+      };
+    });
+
+    $('#gc-add').onclick = () => showGiftsCashAdd();
+
+    $('#gc-list').onclick = async (e) => {
+      const rowEl = e.target.closest('.ql-row');
+      if (!rowEl) return;
+      const id = rowEl.dataset.id;
+      const kind = rowEl.dataset.kind;
+      const schema = kind === 'gift' ? giftSchema : cashSchema;
+      if (!schema) return;
+
+      const action = e.target.closest('[data-action]')?.dataset.action;
+
+      if (action === 'toggle') {
+        return toggleCheck(schema, detectFieldRoles(schema), id, rowEl);
+      }
+      if (action === 'expand') return toggleExpand(schema, id);
+      if (action === 'cancel') { state.expanded = null; return renderGiftsCash(); }
+      if (action === 'save') return saveInline(schema, id, rowEl);
+      if (action === 'delete') {
+        if (!confirm('Delete this item?')) return;
+        const res = await apiWrite('delete', schema.sheet, null, id, rowEl.dataset.row);
+        if (res.error) return toast('Delete failed: ' + res.error);
+        state.expanded = null;
+        toast('Deleted');
+        renderGiftsCash();
+      }
+    };
+
+    setStatus('Synced ' + new Date().toLocaleTimeString());
+  } catch (err) {
+    setStatus('Failed');
+    toast(err.message);
+  }
+}
+
+function renderGiftsCashGrouped(pendingRows, thankedRows, giftSchema, cashSchema, activeThanks) {
+  const renderRow = r =>
+    renderGiftsCashRow(r, r._kind === 'gift' ? giftSchema : cashSchema);
+
+  const sections = [];
+
+  if (pendingRows.length) {
+    sections.push(`
+      <div class="section-header">
+        <span class="section-header-name">To thank</span>
+        <span class="section-header-count">${pendingRows.length}</span>
+      </div>
+      ${pendingRows.map(renderRow).join('')}
+    `);
+  }
+
+  if (thankedRows.length && activeThanks !== 'Pending') {
+    sections.push(`
+      <div class="section-header">
+        <span class="section-header-name">Already thanked</span>
+        <span class="section-header-count">${thankedRows.length}</span>
+      </div>
+      ${thankedRows.map(renderRow).join('')}
+    `);
+  }
+
+  return sections.join('');
+}
+
+function renderGiftsCashRow(row, schema) {
+  const id = rowId(row, schema);
+  const key = schema.sheet + ':' + id;
+  const expanded = state.expanded === key;
+  const checked = isChecked(row['Said Thank You']);
+  const name = row['Name of Person'] || '—';
+  const isGift = row._kind === 'gift';
+  const amount = isGift ? row['Gift'] : row['Amount'];
+  const date = isGift ? row['Date we got gift'] : row['Date'];
+  const badge = isGift
+    ? '<span class="pill">🎁 Gift</span>'
+    : '<span class="pill pill-green">💰 Cash</span>';
+
+  return `<div class="ql-row ${checked ? 'done' : ''} ${expanded ? 'expanded' : ''}"
+              data-id="${escapeHtml(String(id))}"
+              data-row="${row._row}"
+              data-kind="${row._kind}">
+    <div class="ql-row-main">
+      <button type="button" class="ql-check ${checked ? 'on' : ''}" data-action="toggle">${checked ? '✓' : ''}</button>
+      <div class="ql-row-info" data-action="expand">
+        <div class="ql-row-name">${escapeHtml(name)}</div>
+        <div class="ql-row-meta">
+          ${badge}
+          ${amount ? `<span class="pill">${escapeHtml(isGift ? String(amount) : money(amount))}</span>` : ''}
+          ${date ? `<span class="ql-row-date">${escapeHtml(fmtDateShort(date))}</span>` : ''}
+        </div>
+      </div>
+      <button type="button" class="ql-more" data-action="expand">⋯</button>
+    </div>
+    ${expanded ? renderInlineEditor(row, schema) : ''}
+  </div>`;
+}
+
+function showGiftsCashAdd() {
+  const strip = $('#gc-add-strip');
+  if (!strip) return;
+  if (strip.firstChild) { strip.innerHTML = ''; return; }
+
+  strip.innerHTML = `
+    <div class="ql-quick-add" id="gc-quick-add">
+      <div class="field field-compact">
+        <label>Type</label>
+        <select id="gc-type">
+          <option value="gift">Gift</option>
+          <option value="cash">Cash</option>
+        </select>
+      </div>
+      <div class="field field-compact">
+        <label>Name</label>
+        <input id="gc-name" placeholder="Name of person">
+      </div>
+      <div class="field field-compact" id="gc-gift-field">
+        <label>Gift</label>
+        <input id="gc-gift" placeholder="What they gave">
+      </div>
+      <div class="field field-compact" id="gc-cash-field" style="display:none">
+        <label>Amount (₦)</label>
+        <input id="gc-amount" type="number" placeholder="0">
+      </div>
+      <div class="ql-quick-actions">
+        <button type="button" class="btn" data-action="cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" data-action="create">Add</button>
+      </div>
+    </div>
+  `;
+
+  const form = $('#gc-quick-add');
+  const typeSel = $('#gc-type');
+  const giftField = $('#gc-gift-field');
+  const cashField = $('#gc-cash-field');
+
+  typeSel.onchange = () => {
+    giftField.style.display = typeSel.value === 'gift' ? '' : 'none';
+    cashField.style.display = typeSel.value === 'cash' ? '' : 'none';
+  };
+
+  form.onclick = async (e) => {
+    const action = e.target.dataset.action;
+    if (action === 'cancel') { strip.innerHTML = ''; return; }
+    if (action !== 'create') return;
+
+    const name = $('#gc-name').value.trim();
+    if (!name) return toast('Please enter a name');
+
+    const type = typeSel.value;
+    const sheetName = type === 'gift' ? 'Gifts Received' : 'Cash Contributions';
+    const data = type === 'gift'
+      ? { 'Name of Person': name, 'Gift': $('#gc-gift').value.trim() }
+      : { 'Name of Person': name, 'Amount': $('#gc-amount').value };
+
+    const res = await apiWrite('create', sheetName, data);
+    if (res.error) return toast('Add failed: ' + res.error);
+    toast('Added');
+    strip.innerHTML = '';
+    renderGiftsCash();
+  };
+}
+
+// ============================================================
+// VIEW: Logistics (Venue + New Home + Rentals merged)
+// ============================================================
+
+async function renderLogistics() {
+  setStatus('Loading logistics…');
+  try {
+    const [vRes, nRes, rRes] = await Promise.all([
+      apiGetRows('Things to get to and from venue'),
+      apiGetRows('Things to take back to new home'),
+      apiGetRows('Rentals Tracker')
+    ]);
+
+    // 1. Filter out blank/ghost rows and tag them with their destination
+    const venue = (vRes.rows || [])
+      .filter(r => String(r['Item'] || '').trim() !== '')
+      .map(r => ({ ...r, _destination: 'venue' }));
+
+    const home = (nRes.rows || [])
+      .filter(r => String(r['Item'] || '').trim() !== '')
+      .map(r => ({ ...r, _destination: 'home' }));
+
+    const rentals = (rRes.rows || [])
+      .filter(r => String(r['Item'] || '').trim() !== '')
+      .map(r => ({ ...r, _destination: 'rental' }));
+
+    const vSchema = state.schema.find(s => s.sheet === 'Things to get to and from venue');
+    const hSchema = state.schema.find(s => s.sheet === 'Things to take back to new home');
+    const rSchema = state.schema.find(s => s.sheet === 'Rentals Tracker');
+
+    // 2. Teach the app the columns so the inline editor works
+    if (vSchema && !vSchema.columns && venue.length > 0) vSchema.columns = Object.keys(venue[0]).filter(k => k !== '_row' && k !== '_destination');
+    if (hSchema && !hSchema.columns && home.length > 0) hSchema.columns = Object.keys(home[0]).filter(k => k !== '_row' && k !== '_destination');
+    if (rSchema && !rSchema.columns && rentals.length > 0) rSchema.columns = Object.keys(rentals[0]).filter(k => k !== '_row' && k !== '_destination');
+
+    const activeKind = state.filter._logistics || 'All';
+    const q = (state.search._logistics || '').toLowerCase();
+
+    // 3. Filter based on active tab and search query
+    let rows = [...venue, ...home, ...rentals];
+    if (activeKind === 'Venue') rows = venue;
+    if (activeKind === 'New home') rows = home;
+    if (activeKind === 'Rentals') rows = rentals;
+
+    if (q) {
+      rows = rows.filter(r =>
+        Object.values(r).some(v => String(v).toLowerCase().includes(q))
+      );
+    }
+
+    // 4. Sort: pending items first, then by status order
+    const statusOrder = {
+      'Not started': 0,
+      'Packed for venue': 1,
+      'Taken to venue': 2,
+      'Packed': 3,
+      'Packed for home': 4,
+      'At new home': 5,
+      'Returned home': 6
+    };
+
+    rows.sort((a, b) => {
+      if (a._destination === 'rental' && b._destination === 'rental') {
+        const aR = isChecked(a['Returned']);
+        const bR = isChecked(b['Returned']);
+        if (aR !== bR) return aR ? 1 : -1;
+        return (a._row || 0) - (b._row || 0);
+      }
+
+      const sa = statusOrder[a['Status']] ?? 99;
+      const sb = statusOrder[b['Status']] ?? 99;
+      if (sa !== sb) return sa - sb;
+      return (a._row || 0) - (b._row || 0);
+    });
+
+    // 5. Calculate stats for the top cards
+    const venueOpen = venue.filter(r => (r['Status'] || 'Not started') !== 'Returned home').length;
+    const homeOpen = home.filter(r => (r['Status'] || 'Not started') !== 'At new home').length;
+    const rentalsOpen = rentals.filter(r => !isChecked(r['Returned'])).length;
+
+    $('#view').innerHTML = `
+      <div class="toolbar">
+        <h1>Logistics</h1>
+        <button class="btn btn-primary" id="lg-add">+ Add item</button>
+      </div>
+      
+      ${renderStats([
+      { label: 'Venue — open', value: venueOpen, hint: `${venue.length} total` },
+      { label: 'New home — open', value: homeOpen, hint: `${home.length} total` },
+      { label: 'Rentals — due back', value: rentalsOpen, hint: `${rentals.length} total` }
+    ])}
+      
+      <div class="ql-controls">
+        <input type="search" id="lg-search" placeholder="Search items…" value="${escapeHtml(state.search._logistics || '')}">
+      </div>
+      
+      <div class="chips">
+        ${['All', 'Venue', 'New home', 'Rentals'].map(k =>
+      `<button class="chip ${activeKind === k ? 'on' : ''}" data-kind="${k}">${k}</button>`
+    ).join('')}
+      </div>
+      
+      <div id="lg-add-strip"></div>
+      
+      <div class="ql-list" id="lg-list">
+        ${rows.length === 0
+        ? `<div class="ql-empty">${q ? 'No matches' : 'Nothing here yet'}</div>`
+        : rows.map(r => {
+          let schema = vSchema;
+          if (r._destination === 'home') schema = hSchema;
+          if (r._destination === 'rental') schema = rSchema;
+          return renderLogisticsRow(r, schema, r._destination);
+        }).join('')
+      }
+      </div>
+    `;
+
+    // Bind Search
+    const search = $('#lg-search');
+    if (search) search.oninput = debounce(() => {
+      state.search._logistics = search.value;
+      renderLogistics();
+    }, 200);
+
+    // Bind Filter Chips
+    $$('.chip[data-kind]').forEach(chip => {
+      chip.onclick = () => {
+        state.filter._logistics = chip.dataset.kind;
+        renderLogistics();
+      };
+    });
+
+    // Bind Add Button
+    $('#lg-add').onclick = () => showLogisticsAdd(vSchema, hSchema, rSchema);
+
+    // Bind Row Clicks (Expand, Delete, etc.)
+    $('#lg-list').onclick = async (e) => {
+      // If they clicked the dropdown, don't expand the row
+      if (e.target.closest('.logistics-status-select')) return;
+
+      const rowEl = e.target.closest('.ql-row');
+      if (!rowEl) return;
+      const id = rowEl.dataset.id;
+      const sheetName = rowEl.dataset.sheet;
+
+      let schema = vSchema;
+      if (sheetName === 'Things to take back to new home') schema = hSchema;
+      if (sheetName === 'Rentals Tracker') schema = rSchema;
+
+      if (!schema) return;
+      const action = e.target.closest('[data-action]')?.dataset.action;
+
+      if (action === 'expand') return toggleExpand(schema, id);
+      if (action === 'cancel') { state.expanded = null; return renderLogistics(); }
+      if (action === 'save') return saveInline(schema, id, rowEl);
+      if (action === 'delete') {
+        if (!confirm('Delete this item?')) return;
+        const res = await apiWrite('delete', schema.sheet, null, id, rowEl.dataset.row);
+        if (res.error) return toast('Delete failed: ' + res.error);
+        state.expanded = null;
+        toast('Deleted');
+        renderLogistics();
+      }
+    };
+
+    // Bind Inline Status Dropdowns (Venue, Home, and Rentals)
+    $$('.logistics-status-select').forEach(sel => {
+      sel.onchange = async (e) => {
+        e.stopPropagation();
+        const rowEl = sel.closest('.ql-row');
+        const id = rowEl.dataset.id;
+        const sheetName = rowEl.dataset.sheet;
+        const newValue = sel.value;
+
+        let schema = vSchema;
+        let payload = {};
+
+        if (sheetName === 'Rentals Tracker') {
+          schema = rSchema;
+          // Map the dropdown string back to a boolean for the sheet
+          payload = { 'Returned': newValue === 'true' };
+        } else {
+          if (sheetName === 'Things to take back to new home') schema = hSchema;
+          payload = { 'Status': newValue };
+        }
+
+        sel.disabled = true;
+
+        const res = await apiWrite('update', schema.sheet, payload, id, rowEl.dataset.row);
+
+        if (res.error) {
+          toast('Save failed: ' + res.error);
+          sel.value = sel.dataset.prev; // rollback on failure
+          sel.disabled = false;
+        } else {
+          toast('Status updated');
+          renderLogistics(); // re-render to re-sort and update counts
+        }
+      };
+    });
+
+    setStatus('Synced ' + new Date().toLocaleTimeString());
+  } catch (err) {
+    setStatus('Failed');
+    toast(err.message);
+  }
+}
+
+function renderLogisticsRow(row, schema, destination) {
+  const id = rowId(row, schema);
+  const key = schema.sheet + ':' + id;
+  const expanded = state.expanded === key;
+  const name = row['Item'] || '—';
+
+  let metaHtml = '';
+  let isDone = false;
+
+  if (destination === 'rental') {
+    isDone = isChecked(row['Returned']);
+
+    // 1. Gather Rental Specific Data
+    const qty = row['Quantity'] ? `<span class="pill">Qty: ${row['Quantity']}</span>` : '';
+    const vendor = row['Vendor/Person'] ? `<span class="pill">🏢 ${escapeHtml(row['Vendor/Person'])}</span>` : '';
+    const returnDateRaw = row['Date of Expected Return'];
+    const returnTimeRaw = row['Time to return'];
+
+    // 2. Smart Date Formatting
+    let dateHtml = '';
+    if (returnDateRaw) {
+      const d = parseSheetDate(returnDateRaw);
+      const daysLeft = daysUntil(returnDateRaw);
+
+      let dateStr = d ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+      const timeStr = fmtTime(returnTimeRaw);
+
+      if (timeStr) dateStr += ` at ${timeStr}`;
+
+      let dateClass = '';
+      if (!isDone && daysLeft !== null) {
+        if (daysLeft < 0) dateClass = 'pill-red';       // Overdue
+        else if (daysLeft === 0) dateClass = 'pill-amber'; // Due today
+      }
+
+      dateHtml = `<span class="pill ${dateClass}">📅 Due ${dateStr}</span>`;
+    }
+
+    // 3. The Dropdown (mapped to boolean strings)
+    const statusHtml = `
+      <select class="logistics-status-select" data-action="update-status" data-prev="${isDone}">
+        <option value="false" ${!isDone ? 'selected' : ''}>Needs return</option>
+        <option value="true" ${isDone ? 'selected' : ''}>Returned</option>
+      </select>
+    `;
+
+    metaHtml = `
+      <span class="pill" style="background:#eef0fb; color:#1e2a6a;">📦 Rental</span>
+      ${statusHtml}
+      ${qty}
+      ${vendor}
+      ${dateHtml}
+    `;
+
+  } else {
+    // Venue & Home logic remains the same
+    const badge = destination === 'venue'
+      ? '<span class="pill">🏛 Venue run</span>'
+      : '<span class="pill">🏠 New home</span>';
+
+    const status = row['Status'] || 'Not started';
+    isDone = status === 'Returned home' || status === 'At new home';
+
+    const statuses = destination === 'venue'
+      ? ['Not started', 'Packed for venue', 'Taken to venue', 'Packed for home', 'Returned home']
+      : ['Not started', 'Packed', 'At new home'];
+
+    const statusHtml = `
+      <select class="logistics-status-select" data-action="update-status" data-prev="${escapeHtml(status)}">
+        ${statuses.map(s => `<option value="${s}" ${s === status ? 'selected' : ''}>${s}</option>`).join('')}
+      </select>
+    `;
+
+    const person = row['Person Responsible'] ? `<span class="pill">${escapeHtml(row['Person Responsible'])}</span>` : '';
+    const location = row['Last known Location'] || row['Location'] ? `<span class="pill">📍 ${escapeHtml(row['Last known Location'] || row['Location'])}</span>` : '';
+
+    metaHtml = `
+      ${badge}
+      ${statusHtml}
+      ${person}
+      ${location}
+    `;
+  }
+
+  return `<div class="ql-row ${isDone ? 'done' : ''} ${expanded ? 'expanded' : ''}"
+              data-id="${escapeHtml(String(id))}"
+              data-row="${row._row}"
+              data-sheet="${escapeHtml(schema.sheet)}">
+    <div class="ql-row-main">
+      
+      <div class="ql-row-info" data-action="expand">
+        <div class="ql-row-name">${escapeHtml(name)}</div>
+        <div class="ql-row-meta">
+          ${metaHtml}
+        </div>
+      </div>
+      <button type="button" class="ql-more" data-action="expand">⋯</button>
+    </div>
+    ${expanded ? renderInlineEditor(row, schema) : ''}
+  </div>`;
+}
+
+function showLogisticsAdd(vSchema, hSchema, rSchema) {
+  const strip = $('#lg-add-strip');
+  if (!strip) return;
+  if (strip.firstChild) { strip.innerHTML = ''; return; }
+
+  strip.innerHTML = `
+    <div class="ql-quick-add" id="lg-quick-add">
+      <div class="field field-compact">
+        <label>Type</label>
+        <select id="lg-dest">
+          <option value="venue">Venue run</option>
+          <option value="home">New home</option>
+          <option value="rental">Rental</option>
+        </select>
+      </div>
+      <div class="field field-compact">
+        <label>Item</label>
+        <input id="lg-name" placeholder="What are you carrying?">
+      </div>
+      <div class="field field-compact">
+        <label>Person / Vendor</label>
+        <input id="lg-person" placeholder="Who's handling it?">
+      </div>
+      <div class="ql-quick-actions">
+        <button type="button" class="btn" data-action="cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" data-action="create">Add</button>
+      </div>
+    </div>
+  `;
+
+  const form = $('#lg-quick-add');
+  form.onclick = async (e) => {
+    const action = e.target.dataset.action;
+    if (action === 'cancel') { strip.innerHTML = ''; return; }
+    if (action !== 'create') return;
+
+    const name = $('#lg-name').value.trim();
+    if (!name) return toast('Please enter an item');
+
+    const dest = $('#lg-dest').value;
+    let schema = vSchema;
+    if (dest === 'home') schema = hSchema;
+    if (dest === 'rental') schema = rSchema;
+    if (!schema) return toast('Destination config missing');
+
+    const data = { 'Item': name };
+    const person = $('#lg-person').value.trim();
+
+    if (dest === 'rental') {
+      data['Vendor/Person'] = person;
+      data['Returned'] = false;
+    } else {
+      data['Status'] = 'Not started';
+      data['Person Responsible'] = person;
+    }
+
+    const res = await apiWrite('create', schema.sheet, data);
+    if (res.error) return toast('Add failed: ' + res.error);
+    toast('Added');
+    strip.innerHTML = '';
+    renderLogistics();
+  };
+}
+// ============================================================
 // VIEW: Vendors (merged from 4 source sheets)
 // ============================================================
 
@@ -2089,68 +2909,85 @@ async function renderVendors() {
       });
     });
 
-    // Only show vendors with a name
     const named = vendors.filter(v => v.name);
 
-    // Filter chips
+    // Filters
     const kinds = ['All', ...Array.from(new Set(named.map(v => v.kind)))];
     const activeKind = state.filter._vendors || 'All';
+    const activeStatus = state.filter._vendors_status || 'Active';
     const q = (state.search._vendors || '').toLowerCase();
 
     let filtered = named;
-    if (activeKind !== 'All') filtered = filtered.filter(v => v.kind === activeKind);
-    if (q) filtered = filtered.filter(v => Object.values(v).some(val => String(val).toLowerCase().includes(q)));
 
-    // Group by stage
-    const stageOrder = ['Chosen/Approved', 'Paid', 'Waiting on Final Proposal', 'Quote Received', 'Call Scheduled', 'Inquiries Made', 'Contract Sent', 'Contract Signed', 'Deposit Made'];
-    const byStage = {};
-    filtered.forEach(v => {
-      const st = v.stage || '— No stage —';
-      (byStage[st] = byStage[st] || []).push(v);
-    });
-    const stages = Object.keys(byStage).sort((a, b) => {
-      const ia = stageOrder.indexOf(a), ib = stageOrder.indexOf(b);
-      if (ia === -1 && ib === -1) return a.localeCompare(b);
-      if (ia === -1) return 1;
-      if (ib === -1) return -1;
-      return ia - ib;
-    });
+    // Status Filter: Default hides 'Cut' vendors
+    // Define what it means to be successfully chosen
+    const chosenStages = [
+      'Chosen/Approved', 'Contract Sent', 'Contract Received', 'Contract Signed',
+      'Contract Returned', 'Deposit Made', 'Shipped', 'Arrived', 'Picked Up'
+    ];
+
+    if (activeStatus === 'Active') {
+      filtered = filtered.filter(v => !String(v.stage).startsWith('Cut'));
+    } else if (activeStatus === 'Chosen') {
+      filtered = filtered.filter(v => chosenStages.includes(v.stage));
+    }
+
+    if (activeKind !== 'All') {
+      filtered = filtered.filter(v => v.kind === activeKind);
+    }
+    if (q) {
+      filtered = filtered.filter(v => Object.values(v).some(val => String(val).toLowerCase().includes(q)));
+    }
+
+    // Alphabetical Sort (No more grouping by stage buckets)
+    filtered.sort((a, b) => a.name.localeCompare(b.name));
 
     $('#view').innerHTML = `
       <div class="toolbar">
         <h1>Vendors</h1>
-        <span class="pill">${named.length} total</span>
+        <div class="toolbar-actions">
+          <span class="pill">${named.length} total</span>
+          <button class="btn btn-primary" id="v-add">+ Add vendor</button>
+        </div>
       </div>
+      
+      <div id="v-add-strip"></div>
+
       <div class="ql-controls">
         <input type="search" id="v-search" placeholder="Search vendors, types, phones…" value="${escapeHtml(state.search._vendors || '')}">
       </div>
+      
       <div class="chips">
         ${kinds.map(k => `<button class="chip ${activeKind === k ? 'on' : ''}" data-kind="${escapeHtml(k)}">${escapeHtml(k)}</button>`).join('')}
       </div>
-      ${stages.length === 0 ? `<div class="ql-empty">No vendors match</div>` :
-        stages.map(stage => `
-          <div class="tl-bucket">
-            <div class="tl-bucket-header">
-              <span class="tl-bucket-name">${escapeHtml(stage)}</span>
-              <span class="tl-bucket-count">${byStage[stage].length}</span>
-            </div>
-            <div class="ql-list">
-              ${byStage[stage].map(renderVendorRow).join('')}
-            </div>
-          </div>`).join('')}
+      
+      <div class="chips" style="margin-top:-4px;">
+        <button class="chip ${activeStatus === 'Active' ? 'on' : ''}" data-status="Active">Active (No Cuts)</button>
+        <button class="chip ${activeStatus === 'Chosen' ? 'on' : ''}" data-status="Chosen">Chosen/Approved</button>
+        <button class="chip ${activeStatus === 'All' ? 'on' : ''}" data-status="All">Show All</button>
+      </div>
+
+      ${filtered.length === 0 ? `<div class="ql-empty">No vendors match</div>` : `
+        <div class="ql-list">
+          ${filtered.map(renderVendorRow).join('')}
+        </div>
+      `}
     `;
 
     const search = $('#v-search');
     if (search) search.oninput = debounce(() => { state.search._vendors = search.value; renderVendors(); }, 200);
+
     $$('.chip[data-kind]').forEach(chip => {
       chip.onclick = () => { state.filter._vendors = chip.dataset.kind; renderVendors(); };
     });
 
-    // Single delegated click handler on #view.
-    // Order matters: check the Edit button first, then the stage select,
-    // then fall through to the collapse toggle.
+    $$('.chip[data-status]').forEach(chip => {
+      chip.onclick = () => { state.filter._vendors_status = chip.dataset.status; renderVendors(); };
+    });
+
+    $('#v-add').onclick = () => showVendorAdd(sources, $('#v-add-strip'), named);
+
     $('#view').onclick = (e) => {
-      // 1. Edit button — opens the vendor editor
       const editBtn = e.target.closest('.vendor-edit-btn');
       if (editBtn) {
         const card = editBtn.closest('.vendor-card');
@@ -2161,20 +2998,13 @@ async function renderVendors() {
         if (vendor) openVendorEditor(card, vendor);
         return;
       }
-
-      // 2. Any click inside the actions row (select, call, whatsapp) — ignore
       if (e.target.closest('.vendor-actions')) return;
-
-      // 3. Any click on a form element — ignore
       if (e.target.closest('select, a, button, input, textarea')) return;
-
-      // 4. Otherwise toggle the card
       const card = e.target.closest('.vendor-card');
       if (!card) return;
       card.classList.toggle('expanded');
     };
 
-    // Edit stage via select
     $$('.vendor-stage-select').forEach(sel => {
       sel.onchange = async () => {
         const rowEl = sel.closest('.vendor-card');
@@ -2191,6 +3021,117 @@ async function renderVendors() {
 
     setStatus('Synced ' + new Date().toLocaleTimeString());
   } catch (err) { setStatus('Failed'); toast(err.message); }
+}
+
+function showVendorAdd(sources, strip, existingVendors) {
+  if (!strip) return;
+  if (strip.firstChild) { strip.innerHTML = ''; return; }
+
+  const sourceOptions = sources.map(s => `<option value="${escapeHtml(s.sheet)}">${escapeHtml(s.kind)} Vendor</option>`).join('');
+  const allTypes = Array.from(new Set(existingVendors.map(v => v.type).filter(Boolean))).sort();
+
+  strip.innerHTML = `<div class="ql-quick-add" id="v-quick-add">
+    <div class="field field-compact">
+      <label>Source Sheet</label>
+      <select id="v-source">${sourceOptions}</select>
+    </div>
+    <div class="field field-compact">
+      <label>Vendor / Company</label>
+      <input id="v-name" placeholder="Name" required>
+    </div>
+    <div class="field field-compact">
+      <label>Type</label>
+      <select id="v-type">
+        <option value="">— Select Type —</option>
+        ${allTypes.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('')}
+        <option value="Other">Other (Type manually)</option>
+      </select>
+      <input id="v-type-other" placeholder="Enter new type" style="display:none; margin-top:4px;">
+    </div>
+    <div class="field field-compact">
+      <label>Phone</label>
+      <input id="v-phone" placeholder="Phone number" type="tel">
+    </div>
+    <div class="field field-compact">
+      <label>Stage</label>
+      <select id="v-stage"></select>
+    </div>
+    <div class="ql-quick-actions">
+      <button type="button" class="btn" data-action="cancel">Cancel</button>
+      <button type="button" class="btn btn-primary" data-action="create">Add</button>
+    </div>
+  </div>`;
+
+  const form = $('#v-quick-add');
+  const sourceSel = $('#v-source');
+  const stageSel = $('#v-stage');
+
+  // Function to load the correct stages for the selected sheet
+  const updateStages = () => {
+    const sheetName = sourceSel.value;
+    const schema = state.schema.find(s => s.sheet === sheetName);
+
+    // All sheets now use 'Stage of Communication'
+    let opts = optionsForColumn(schema, 'Stage of Communication');
+
+    if (!opts || opts.length === 0) {
+      opts = ['Inquiries Made', 'Call Scheduled', 'Quote Received', 'Waiting on Final Proposal', 'Chosen/Approved', 'Paid'];
+    }
+
+    stageSel.innerHTML = `<option value="">— No stage —</option>` +
+      opts.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+  };
+
+  // Run once on load, and every time the sheet changes
+  updateStages();
+  sourceSel.onchange = updateStages;
+
+  form.querySelector('input')?.focus();
+
+  $('#v-type').onchange = (e) => {
+    $('#v-type-other').style.display = e.target.value === 'Other' ? 'block' : 'none';
+    if (e.target.value === 'Other') $('#v-type-other').focus();
+  };
+
+  form.onclick = async (e) => {
+    const action = e.target.dataset.action;
+    if (action === 'cancel') { strip.innerHTML = ''; return; }
+    if (action !== 'create') return;
+
+    const sourceSheet = sourceSel.value;
+    const name = $('#v-name').value.trim();
+    if (!name) return toast('Please enter a vendor name');
+
+    let typeVal = $('#v-type').value;
+    if (typeVal === 'Other') typeVal = $('#v-type-other').value.trim();
+
+    const columnMap = {
+      'Wedding Vendor Sourcing': { name: 'Wedding Vendor/Company', type: 'Type', phone: 'Phone number', stage: 'Stage of Communication' },
+      'Household Vendor Sourcing': { name: 'Name/Company', type: 'Type', phone: 'Phone number', stage: 'Stage of Communication' },
+      'Food Vendor Sourcing': { name: 'Vendor', type: 'Food items', phone: 'Phone number', stage: 'Stage of Communication' },
+      'Honeymoon Vendor Sourcing': { name: 'Vendor/Company', type: 'Type', phone: 'Phone number', stage: 'Stage of Communication' }
+    };
+
+    const map = columnMap[sourceSheet];
+    if (!map) return toast('Unknown vendor sheet');
+
+    const data = {};
+    data[map.name] = name;
+    if (typeVal) data[map.type] = typeVal;
+
+    const phoneVal = $('#v-phone').value.trim();
+    if (phoneVal) data[map.phone] = phoneVal;
+
+    const stageVal = stageSel.value;
+    if (stageVal) data[map.stage] = stageVal;
+
+    const res = await apiWrite('create', sourceSheet, data);
+    if (res.error) return toast('Add failed: ' + res.error);
+
+    toast('Vendor added');
+    strip.innerHTML = '';
+    renderVendors();
+  };
 }
 
 function normalizeVendor(row, src) {
@@ -2218,6 +3159,21 @@ function renderVendorRow(v) {
   const phone = v.phone || '';
   const tel = telLink(phone);
   const wa = waLink(phone);
+
+  // Dynamically get the options from the sheet's data validation
+  const schema = state.schema.find(s => s.sheet === v._source);
+  let stageOptions = optionsForColumn(schema, v._stageField);
+
+  // Fallback just in case the sheet has no validations set up
+  if (!stageOptions || stageOptions.length === 0) {
+    stageOptions = ['Inquiries Made', 'Call Scheduled', 'Quote Received', 'Waiting on Final Proposal', 'Chosen/Approved', 'Paid', 'Cut - Budget', 'Cut - don\'t trust', 'Cut - Other'];
+  }
+
+  // Make sure the current stage is in the list so it shows up properly
+  if (v.stage && !stageOptions.includes(v.stage)) {
+    stageOptions.push(v.stage);
+  }
+
   return `<div class="ql-row vendor-card" data-source="${escapeHtml(v._source)}" data-row="${v._row}" data-stage-field="${escapeHtml(v._stageField)}" data-prev-stage="${escapeHtml(v.stage)}">
     <div class="ql-row-main">
       <div class="ql-row-info">
@@ -2232,8 +3188,7 @@ function renderVendorRow(v) {
     </div>
     <div class="vendor-actions">
       <select class="vendor-stage-select">
-        ${['Inquiries Made', 'Call Scheduled', 'Quote Received', 'Waiting on Final Proposal', 'Chosen/Approved', 'Paid', 'Cut - Budget', 'Cut - don\'t trust', 'Cut - Other']
-      .map(s => `<option value="${s}" ${s === v.stage ? 'selected' : ''}>${s}</option>`).join('')}
+        ${stageOptions.map(s => `<option value="${s}" ${s === v.stage ? 'selected' : ''}>${s}</option>`).join('')}
       </select>
       ${phone ? `
         <a class="vendor-action" href="${escapeHtml(tel)}">📞 Call</a>
@@ -2363,12 +3318,19 @@ async function renderSearch() {
             .slice(0, 3)
             .map(([k, v]) => `${escapeHtml(k)}: ${escapeHtml(String(v))}`)
             .join(' · ');
-          return `<div class="ql-row" style="cursor:default">
+
+          const id = sch ? rowId(row, sch) : row._row;
+
+          return `<div class="ql-row search-result-row" 
+                       data-route="${escapeHtml(r.sheet)}" 
+                       data-id="${escapeHtml(String(id))}" 
+                       style="cursor:pointer">
                 <div class="ql-row-main">
                   <div class="ql-row-info">
                     <div class="ql-row-name">${escapeHtml(String(row[Object.keys(row)[1]] || '—'))}</div>
                     <div class="ql-row-meta">${preview}</div>
                   </div>
+                  <div class="ql-more" style="color: var(--accent); font-weight: bold;">→</div>
                 </div>
               </div>`;
         }).join('')}
@@ -2376,6 +3338,19 @@ async function renderSearch() {
           </div>`;
       }).join('')}
   `;
+
+  // Bind click events to the search results
+  $$('.search-result-row').forEach(el => {
+    el.onclick = () => {
+      const route = el.dataset.route;
+      const id = el.dataset.id;
+
+      // Store the intended expansion, then change the URL hash
+      state.pendingExpand = { sheet: route, id: id };
+      location.hash = '#/' + encodeURIComponent(route);
+    };
+  });
+
   setStatus('Synced ' + new Date().toLocaleTimeString());
 }
 
@@ -2398,11 +3373,25 @@ function renderLinkView(schema) {
 function renderNav() {
   const nav = $('#nav'); if (!nav) return;
 
+  // Hide the merged sheets so they don't show up as individual tabs
+  const HIDDEN_SHEETS = [
+    'Gifts Received',
+    'Cash Contributions',
+    'Things to get to and from venue',
+    'Things to take back to new home',
+    'Rentals Tracker'
+  ];
+
   const items = [];
   VIRTUAL_NAV.forEach(v => items.push({ route: v.route, label: v.label, order: v.order }));
-  state.schema.filter(s => s.visible && s.type !== 'link').forEach(s => {
-    items.push({ route: s.sheet, label: s.label, order: s.sortOrder });
-  });
+
+  // Add all visible sheets EXCEPT the hidden ones
+  state.schema
+    .filter(s => s.visible && s.type !== 'link' && !HIDDEN_SHEETS.includes(s.sheet))
+    .forEach(s => {
+      items.push({ route: s.sheet, label: s.label, order: s.sortOrder });
+    });
+
   // Links (external)
   state.schema.filter(s => s.type === 'link').forEach(s => {
     items.push({ route: '__link__' + s.sheet, label: s.label + ' ↗', order: s.sortOrder, url: s.url });
@@ -2421,7 +3410,15 @@ function renderNav() {
 
 async function routeTo(route) {
   state.route = route;
-  state.expanded = null;
+
+  // Check if we arrived here from a search result
+  if (state.pendingExpand && state.pendingExpand.sheet === route) {
+    state.expanded = route + ':' + state.pendingExpand.id;
+    state.pendingExpand = null; // clear it so it doesn't stick
+  } else {
+    state.expanded = null;
+  }
+
   renderNav();
   await render();
 }
