@@ -72,11 +72,11 @@ Make a copy of the provided template. This sheet is your database. Ensure the fo
 
 ## 📱 2. How to Use the App
 
-· The Sidebar: Tap the ☰ icon to open the menu. Merged tabs (Gifts/Cash and Logistics) hide their underlying source sheets automatically.
-· Editing: Tap the ⋯ (three dots) next to any item to open the editor. You can also edit your Savings Goal directly by clicking the cards on the Overview tab.
-· Refreshing: The app saves data for 5 minutes to load fast. If you make a change in the Google Sheet and don't see it on the app, tap the Refresh button in the bottom left.
-· Day-Of Schedule: Uses the Time column to render a chronological timeline. It uses .getDisplayValues() on the backend to prevent timezone conversions, so 8:00 AM always shows as 8:00 AM.
-· Logistics: You can change the status of Venue/Home items via the inline dropdown, and mark Rentals as "Returned" without opening the editor.
+* The Sidebar: Tap the ☰ icon to open the menu. Merged tabs (Gifts/Cash and Logistics) hide their underlying source sheets automatically.
+* Editing: Tap the ⋯ (three dots) next to any item to open the editor. You can also edit your Savings Goal directly by clicking the cards on the Overview tab.
+* Refreshing: The app saves data for 5 minutes to load fast. If you make a change in the Google Sheet and don't see it on the app, tap the Refresh button in the bottom left.
+* Day-Of Schedule: Uses the Time column to render a chronological timeline. It uses .getDisplayValues() on the backend to prevent timezone conversions, so 8:00 AM always shows as 8:00 AM.
+* Logistics: You can change the status of Venue/Home items via the inline dropdown, and mark Rentals as "Returned" without opening the editor.
 
 ---
 
@@ -123,9 +123,9 @@ The app is smart, but it relies on the Google Sheet being formatted a certain wa
 
 The sendCountdownReminders script runs daily and sends an email on the 1st of every month (or if a task is overdue).
 
-· Financial Goal: It dynamically calculates your total saved (Base Savings + Cash Contributions) against your savings_goal.
-· Monthly Target: It divides the remaining balance by the months left to tell you exactly how much to save each month.
-· Action Items: It pulls upcoming and overdue tasks from the Planning Schedule.
+* Financial Goal: It dynamically calculates your total saved (Base Savings + Cash Contributions) against your savings_goal.
+* Monthly Target: It divides the remaining balance by the months left to tell you exactly how much to save each month.
+* Action Items: It pulls upcoming and overdue tasks from the Planning Schedule.
 
 ---
 
@@ -133,11 +133,11 @@ The sendCountdownReminders script runs daily and sends an email on the 1st of ev
 
 ### Colors
 
-· Background: #f5f5fa (Off-white)
-· Sidebar/Gradients: #1e2a6a to #5b2c8c (Royal Blue to Purple)
-· Accent: #c9973f (Warm Gold)
+* Background: #f5f5fa (Off-white)
+* Sidebar/Gradients: #1e2a6a to #5b2c8c (Royal Blue to Purple)
+* Accent: #c9973f (Warm Gold)
 
 ### Fonts
 
-· Display: Fraunces (Headers and large numbers)
-· Body/UI: Inter (Standard text and inputs)
+* Display: Fraunces (Headers and large numbers)
+* Body/UI: Inter (Standard text and inputs)
