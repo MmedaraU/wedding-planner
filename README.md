@@ -32,7 +32,7 @@ Make a copy of the provided template. This sheet is your database. Ensure the fo
 2. Paste the code from `@OnlyCurrentDoc.txt`.
 3. Find `const API_SECRET` and change it to a random password.
 4. **Set up Permissions (Crucial):** Click the **⚙️ Project Settings** icon. Check *"Show 'appsscript.json' manifest file in editor"*. Go back to the Editor, click `appsscript.json`, and replace its contents with this block:
-   ```json
+```json
    {
      "timeZone": "Africa/Lagos",
      "dependencies": {},
